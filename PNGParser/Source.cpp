@@ -6,59 +6,20 @@
 #include <cstdint>
 #include "PNGParser.h"
 
-static constexpr std::array<std::uint8_t, 8> pngSignature
-{ 
-    137 , 
-    80  , 
-    78  , 
-    71  , 
-    13  , 
-    10  , 
-    26  , 
-    10   
-};
-
 bool SignatureMatches(std::span<const std::uint8_t, 8> signature)
 {
     return std::equal(signature.begin(), signature.end(), pngSignature.begin());
 }
 
-constexpr std::uint32_t BytesToIntBigEndian(const std::uint8_t b4, const std::uint8_t b3, std::uint8_t b2, const std::uint8_t b1)
+bool SignatureMatches(std::uint64_t signature)
 {
-    uint32_t i4 = (b4 << 24);
-    uint32_t i3 = (b3 << 16);
-    uint32_t i2 = (b2 << 8);
-    uint32_t i1 = (b1 << 0);
-    return (b4 << 24) | (b3 << 16) | (b2 << 8) | b1;
-}
-
-constexpr std::uint32_t BytesToIntBigEndian(std::span<const std::uint8_t, 4> bytes)
-{
-    return BytesToIntBigEndian(bytes[0], bytes[1], bytes[2], bytes[3]);
-}
-
-
-constexpr std::uint32_t BytesToIntBigEndian(const std::array<std::uint8_t, 4>& bytes)
-{
-    return BytesToIntBigEndian(bytes[0], bytes[1], bytes[2], bytes[3]);
+    return std::memcmp(&signature, pngSignature.data(), pngSignature.size());
 }
 
 struct PNGChunkHeader
 {
     std::uint32_t length;
     ChunkType type;
-};
-
-
-struct ImageHeader
-{
-    std::uint32_t width;
-    std::uint32_t height;
-    std::uint8_t bitDepth;
-    ColorType type;
-    std::uint8_t compressionMethod;
-    std::uint8_t filterMethod;
-    std::uint8_t interlaceMethod;
 };
 
 int main()
@@ -70,9 +31,23 @@ int main()
         std::cout << "Opened\n";
         std::array<std::uint8_t, 8> signature = ReadBytes<8>(image);
 
+        std::uint64_t sigTest = std::bit_cast<std::uint64_t>(signature);
+        std::uint64_t sigTest2;
+        std::memcpy(&sigTest2, FlipEndianness(signature).data(), signature.size());
+
         if(SignatureMatches(signature))
         {
             std::cout << "Signature matched\n";
+        }
+
+        if(SignatureMatches(sigTest))
+        {
+            std::cout << "Signature matched2\n";
+        }
+
+        if(SignatureMatches(sigTest2))
+        {
+            std::cout << "Signature matched3\n";
         }
 
         PNGChunkHeader header
@@ -84,15 +59,15 @@ int main()
         if(header.type == ChunkType::Image_Header)
         {
             std::cout << "Image Header\n";
-            ImageHeader ih
+            ChunkData<ChunkType::Image_Header> ih
             {
-                .width = BytesToIntBigEndian(ReadBytes<4>(image)),
-                .height = BytesToIntBigEndian(ReadBytes<4>(image)),
-                .bitDepth = ReadBytes<1>(image)[0],
-                .type = ColorType(ReadBytes<1>(image)[0]),
-                .compressionMethod = ReadBytes<1>(image)[0],
-                .filterMethod = ReadBytes<1>(image)[0],
-                .interlaceMethod = ReadBytes<1>(image)[0],
+                .width = Parse<std::uint32_t>(image),
+                .height = Parse<std::uint32_t>(image),
+                .bitDepth = Parse<std::uint8_t>(image),
+                .type = ColorType(Parse<std::uint8_t>(image)),
+                .compressionMethod = Parse<std::uint8_t>(image),
+                .filterMethod = Parse<std::uint8_t>(image),
+                .interlaceMethod = Parse<std::uint8_t>(image),
             };
             int i = 0;
         }

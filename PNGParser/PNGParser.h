@@ -7,7 +7,42 @@
 #include <string_view>
 #include <variant>
 
-template<size_t Size>
+inline constexpr bool flipEndian = std::uint16_t(1) != std::bit_cast<std::uint16_t>(std::to_array<std::uint8_t>({ 0, 1 }));
+
+template<std::integral Ty, size_t Size>
+    requires(sizeof(Ty) == 1)
+constexpr std::array<Ty, Size> FlipEndianness(const std::array<Ty, Size>& bytes)
+{
+    std::array<Ty, Size> newBytes;
+    std::reverse_copy(bytes.begin(), bytes.end(), newBytes.begin());
+    return newBytes;
+}
+
+template<class Ty, bool flipEndianness = flipEndian>
+    requires(std::integral<Ty> || std::floating_point<Ty>)
+constexpr Ty ParseBytes(const std::array<std::uint8_t, sizeof(Ty)>& bytes)
+{
+    if constexpr(flipEndianness)
+        return std::bit_cast<Ty>(FlipEndianness(bytes));
+    else
+        return std::bit_cast<Ty>(bytes);
+}
+
+inline constexpr std::array<std::uint8_t, 8> referencePNGSignature
+{
+    137 ,
+    80  ,
+    78  ,
+    71  ,
+    13  ,
+    10  ,
+    26  ,
+    10
+};
+
+inline constexpr std::array<std::uint8_t, 8> pngSignature = (flipEndian) ? FlipEndianness(referencePNGSignature) : referencePNGSignature;
+
+template<size_t Size, bool flipEndianness = flipEndian>
 std::array<std::uint8_t, Size> ReadBytes(std::istream& stream)
 {
     std::array<std::uint8_t, Size> bytes;
@@ -15,7 +50,10 @@ std::array<std::uint8_t, Size> ReadBytes(std::istream& stream)
     for(std::uint8_t& b : bytes)
         b = static_cast<std::uint8_t>(stream.get());
 
-    return bytes;
+    if constexpr(flipEndianness)
+        return FlipEndianness(bytes);
+    else
+        return bytes;
 }
 
 enum class Endian
@@ -24,93 +62,23 @@ enum class Endian
     Big,
 };
 
-template<std::integral Ty, Endian ed = Endian::Little>
-    requires(sizeof(Ty) == 1)
-constexpr Ty BytesToIntegral(std::uint8_t b0)
-{
-    return b0;
-}
-
-template<std::integral Ty, Endian ed = Endian::Little>
-    requires(sizeof(Ty) == 1)
-constexpr Ty BytesToIntegral(std::array<std::uint8_t, 1> bytes)
-{
-    return BytesToIntegral<Ty, ed>(bytes[0]);
-}
-
-template<std::integral Ty, Endian ed = Endian::Little>
-    requires(sizeof(Ty) == 2)
-constexpr Ty BytesToIntegral(std::uint8_t b1, std::uint8_t b0)
-{
-    if constexpr(ed == Endian::Little)
-    {
-        return (b1 << 8) | (b0 << 0);
-    }
-    else
-    {
-        return (b0 << 8) | (b1 << 0);
-    }
-}
-
-template<std::integral Ty, Endian ed = Endian::Little>
-    requires(sizeof(Ty) == 2)
-constexpr Ty BytesToIntegral(std::array<std::uint8_t, 2> bytes)
-{
-    return BytesToIntegral<Ty, ed>(bytes[0], bytes[1]);
-}
-
-template<std::integral Ty, Endian ed = Endian::Little>
-    requires(sizeof(Ty) == 4)
-constexpr Ty BytesToIntegral(std::uint8_t b3, std::uint8_t b2, std::uint8_t b1, std::uint8_t b0)
-{
-    if constexpr(ed == Endian::Little)
-    {
-        return (b3 << 24) | (b2 << 16) | (b1 << 8) | (b0 << 0);
-    }
-    else
-    {
-        return (b0 << 24) | (b1 << 16) | (b2 << 8) | (b3 << 0);
-    }
-}
-
-template<std::integral Ty, Endian ed = Endian::Little>
-    requires(sizeof(Ty) == 4)
-constexpr Ty BytesToIntegral(std::array<std::uint8_t, 4> bytes)
-{
-    return BytesToIntegral<Ty, ed>(bytes[0], bytes[1], bytes[2], bytes[3]);
-}
-
-template<std::integral Ty, Endian ed = Endian::Little>
-    requires(sizeof(Ty) == 8)
-constexpr Ty BytesToIntegral(std::uint8_t b7, std::uint8_t b6, std::uint8_t b5, std::uint8_t b4, std::uint8_t b3, std::uint8_t b2, std::uint8_t b1, std::uint8_t b0)
-{
-    if constexpr(ed == Endian::Little)
-    {
-        return (b7 << 56) | (b6 << 48) | (b5 << 40) | (b4 << 32) | (b3 << 24) | (b2 << 16) | (b1 << 8) | (b0 << 0);
-    }
-    else
-    {
-        return (b0 << 56) | (b1 << 48) | (b2 << 40) | (b3 << 32) | (b4 << 24) | (b5 << 16) | (b6 << 8) | (b7 << 0);
-    }
-}
-
-template<std::integral Ty, Endian ed = Endian::Little>
-    requires(sizeof(Ty) == 8)
-constexpr Ty BytesToIntegral(std::array<std::uint8_t, 8> bytes)
-{
-    return BytesToIntegral<Ty, ed>(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7]);
-}
-
-template<std::integral Ty, Endian ed = Endian::Little>
+template<std::integral Ty, bool flipEndianness = flipEndian>
 Ty Parse(std::istream& stream)
 {
-    return BytesToIntegral<Ty, ed>(ReadBytes<sizeof(Ty)>(stream));
+    if constexpr(flipEndianness)
+        return ParseBytes<Ty>(FlipEndianness(ReadBytes<sizeof(Ty)>(stream)));
+    else
+        return ParseBytes<Ty>(ReadBytes<sizeof(Ty)>(stream));
 }
 
-
-constexpr std::uint32_t StringLiteralToInt(std::string_view string)
+consteval std::uint32_t StringLiteralToInt(std::string_view string)
 {
-    return BytesToIntegral<uint32_t>(string[0], string[1], string[2], string[3]);
+    std::array<std::int8_t, 4> stringBytes = { string[0], string[1], string[2], string[3] };
+
+    if constexpr(flipEndian)
+        stringBytes = FlipEndianness(stringBytes);
+
+    return std::bit_cast<std::uint32_t>(stringBytes);
 }
 
 enum class ChunkType : std::uint32_t
@@ -154,7 +122,7 @@ struct ChunkData<ChunkType::Image_Header>
     static constexpr ChunkType value = ChunkType::Image_Header;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(73, 72, 68, 82));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 73, 72, 68, 82 }));
 
     std::uint32_t width;
     std::uint32_t height;
@@ -171,7 +139,7 @@ struct ChunkData<ChunkType::Palette>
     static constexpr ChunkType value = ChunkType::Palette;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(80, 76, 84, 69));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 80, 76, 84, 69 }));
     static constexpr size_t maxPaletteEntries = 256;
 
     struct Color
@@ -314,7 +282,7 @@ struct ChunkData<ChunkType::Image_Data>
     static constexpr ChunkType value = ChunkType::Image_Data;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(73, 68, 65, 84));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 73, 68, 65, 84 }));
 
     //TODO: Image data
 };
@@ -325,7 +293,7 @@ struct ChunkData<ChunkType::Image_Trailer>
     static constexpr ChunkType value = ChunkType::Image_Trailer;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(73, 69, 78, 68));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 73, 69, 78, 68 }));
 };
 
 template<>
@@ -334,7 +302,7 @@ struct ChunkData<ChunkType::Chroma>
     static constexpr ChunkType value = ChunkType::Chroma;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(99, 72, 82, 77));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 99, 72, 82, 77 }));
 
     std::uint32_t whitePointX;
     std::uint32_t whitePointY;
@@ -355,7 +323,7 @@ struct ChunkData<ChunkType::Image_Gamma>
     static constexpr ChunkType value = ChunkType::Image_Gamma;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(103, 65, 77, 65));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 103, 65, 77, 65 }));
 
     std::uint32_t gamma;
 };
@@ -366,7 +334,7 @@ struct ChunkData<ChunkType::ICC_Profile>
     static constexpr ChunkType value = ChunkType::ICC_Profile;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(105, 67, 67, 80));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 105, 67, 67, 80 }));
 
     std::array<std::uint8_t, 80> profileName;
     std::uint8_t compressionMethod;
@@ -379,7 +347,7 @@ struct ChunkData<ChunkType::Significant_Bits>
     static constexpr ChunkType value = ChunkType::Significant_Bits;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(115, 66, 73, 84));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 115, 66, 73, 84 }));
     
     using SignificantBitVairent = std::variant<
         ColorTypeTable<ColorType::Grey_Scale>::SignificantBits,
@@ -405,7 +373,7 @@ struct ChunkData<ChunkType::RGB_Color_Space>
     static constexpr ChunkType value = ChunkType::RGB_Color_Space;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(115, 82, 71, 66));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 115, 82, 71, 66 }));
 
     static constexpr ChunkData<ChunkType::Image_Gamma> compatabilityGamma
     {
@@ -432,7 +400,7 @@ struct ChunkData<ChunkType::Image_Histogram>
     static constexpr ChunkType value = ChunkType::Image_Histogram;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(104, 73, 83, 84));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 104, 73, 83, 84 }));
 
     std::array<std::uint16_t, ChunkData<ChunkType::Palette>::maxPaletteEntries> histogram;
 };
@@ -443,7 +411,7 @@ struct ChunkData<ChunkType::Transparency>
     static constexpr ChunkType value = ChunkType::Transparency;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(116, 82, 78, 83));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 116, 82, 78, 83 }));
 
     using TransparencyVariant = std::variant<
         ColorTypeTable<ColorType::Grey_Scale>::Transparency,
@@ -465,7 +433,7 @@ struct ChunkData<ChunkType::Physical_Pixel_Dimensions>
     static constexpr ChunkType value = ChunkType::Physical_Pixel_Dimensions;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(112, 72, 89, 115));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 112, 72, 89, 115 }));
     
     std::uint32_t pixelsPerUnitX;
     std::uint32_t pixelsPerUnitY;
@@ -478,7 +446,7 @@ struct ChunkData<ChunkType::Suggested_Palette>
     static constexpr ChunkType value = ChunkType::Suggested_Palette;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(115, 80, 76, 84));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 115, 80, 76, 84 }));
     
     template<std::uint8_t sampleDepth>
     static constexpr std::uint8_t chunkDivisibility = 0;
@@ -528,7 +496,7 @@ struct ChunkData<ChunkType::Time>
     static constexpr ChunkType value = ChunkType::Time;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(116, 73, 77, 69));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 116, 73, 77, 69 }));
 
     std::uint16_t year;
     std::uint8_t month;
@@ -544,7 +512,7 @@ struct ChunkData<ChunkType::International_Text_Data>
     static constexpr ChunkType value = ChunkType::International_Text_Data;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(105, 84, 88, 116));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 105, 84, 88, 116 }));
 
     std::array<std::uint8_t, 80> keyword;
     std::uint8_t compressionFlag;
@@ -560,7 +528,7 @@ struct ChunkData<ChunkType::Text_Data>
     static constexpr ChunkType value = ChunkType::Text_Data;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(116, 69, 88, 116));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 116, 69, 88, 116 }));
 
     std::array<std::uint8_t, 80> keyword;
     //TODO: Text
@@ -572,7 +540,7 @@ struct ChunkData<ChunkType::Compressed_Text_Data>
     static constexpr ChunkType value = ChunkType::Compressed_Text_Data;
     static constexpr std::uint32_t intValue = static_cast<std::uint32_t>(value);
 
-    static_assert(intValue == BytesToIntegral<std::uint32_t>(122, 84, 88, 116));
+    static_assert(intValue == ParseBytes<std::uint32_t>({ 122, 84, 88, 116 }));
 
     std::array<std::uint8_t, 80> keyword;
     std::uint8_t compressionMethod;
