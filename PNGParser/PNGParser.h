@@ -18,11 +18,11 @@ constexpr std::array<Ty, Size> FlipEndianness(const std::array<Ty, Size>& bytes)
     return newBytes;
 }
 
-template<class Ty, bool flipEndianness = flipEndian>
+template<class Ty>
     requires(std::integral<Ty> || std::floating_point<Ty>)
-constexpr Ty ParseBytes(const std::array<std::uint8_t, sizeof(Ty)>& bytes)
+constexpr Ty ParseBytes(const std::array<std::uint8_t, sizeof(Ty)>& bytes, bool flipEndianness = flipEndian)
 {
-    if constexpr(flipEndianness)
+    if (flipEndianness)
         return std::bit_cast<Ty>(FlipEndianness(bytes));
     else
         return std::bit_cast<Ty>(bytes);
@@ -42,7 +42,7 @@ inline constexpr std::array<std::uint8_t, 8> referencePNGSignature
 
 inline constexpr std::array<std::uint8_t, 8> pngSignature = (flipEndian) ? FlipEndianness(referencePNGSignature) : referencePNGSignature;
 
-template<size_t Size, bool flipEndianness = flipEndian>
+template<size_t Size>
 std::array<std::uint8_t, Size> ReadBytes(std::istream& stream)
 {
     std::array<std::uint8_t, Size> bytes;
@@ -50,10 +50,7 @@ std::array<std::uint8_t, Size> ReadBytes(std::istream& stream)
     for(std::uint8_t& b : bytes)
         b = static_cast<std::uint8_t>(stream.get());
 
-    if constexpr(flipEndianness)
-        return FlipEndianness(bytes);
-    else
-        return bytes;
+    return bytes;
 }
 
 enum class Endian
@@ -62,13 +59,10 @@ enum class Endian
     Big,
 };
 
-template<std::integral Ty, bool flipEndianness = flipEndian>
-Ty Parse(std::istream& stream)
+template<std::integral Ty>
+Ty Parse(std::istream& stream, bool flipEndianness = flipEndian)
 {
-    if constexpr(flipEndianness)
-        return ParseBytes<Ty>(FlipEndianness(ReadBytes<sizeof(Ty)>(stream)));
-    else
-        return ParseBytes<Ty>(ReadBytes<sizeof(Ty)>(stream));
+    return ParseBytes<Ty>(ReadBytes<sizeof(Ty)>(stream), flipEndianness);
 }
 
 consteval std::uint32_t StringLiteralToInt(std::string_view string)
