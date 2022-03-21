@@ -1,10 +1,7 @@
-#include <fstream>
-#include <iostream>
-#include <array>
-#include <span>
-#include <algorithm>
-#include <cstdint>
 #include "PNGParser.h"
+#include <span>
+#include <iostream>
+#include <fstream>
 
 bool SignatureMatches(std::span<const std::uint8_t, 8> signature)
 {

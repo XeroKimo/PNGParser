@@ -6,6 +6,7 @@
 #include <tuple>
 #include <string_view>
 #include <variant>
+#include <algorithm>
 
 inline constexpr bool flipEndian = std::uint16_t(1) != std::bit_cast<std::uint16_t>(std::to_array<std::uint8_t>({ 0, 1 }));
 
