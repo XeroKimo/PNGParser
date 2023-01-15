@@ -141,6 +141,8 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="PNGParser.cpp" />
+    <ClCompile Include="PNGParser.ixx" />
     <ClCompile Include="Source.cpp" />
   </ItemGroup>
   <ItemGroup>
