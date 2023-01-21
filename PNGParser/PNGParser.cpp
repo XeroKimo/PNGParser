@@ -7,171 +7,38 @@ module;
 #include <vector>
 #include <bit>
 #include <iostream>
+#include <span>
+#include <zlib.h>
 
 module PNGParser;
 
-
-
-
-static constexpr Bytes<8> ReferencePNGSignature = { 137, 80, 78, 71, 13, 10, 26, 10 };
-static constexpr Bytes<8> PNGSignature = (SwapByteOrder) ? FlipEndianness(ReferencePNGSignature) : ReferencePNGSignature;
-
-template<size_t Count>
-Bytes<Count> ReadBytes(std::istream& stream)
+class UnknownChunkError : public std::runtime_error
 {
-    using Byte = Bytes<Count>::value_type;
-    Bytes<Count> bytes;
-
-    if constexpr(SwapByteOrder)
-    {
-        auto begin = bytes.rbegin();
-        auto end = bytes.rend();
-        for(; begin != end; ++begin)
-        {
-            *begin = static_cast<Byte>(stream.get());
-        }
-    }
-    else
-    {
-        for(Byte& b : bytes)
-            b = static_cast<Byte>(stream.get());
-    }
-
-    return bytes;
-};
-
-template<class Ty>
-    requires std::integral<Ty> || std::floating_point<Ty>
-Ty ParseBytes(std::istream& stream)
-{
-    return std::bit_cast<Ty>(ReadBytes<sizeof(Ty)>(stream));
-};
-
-
-
-class ChunkInputStream
-{
-    std::istream* m_stream;
-    std::uint32_t m_chunkSize = 0;
-    std::uint32_t m_bytesRead = 0;
+    ChunkType m_type{};
 
 public:
-    ChunkInputStream(std::istream& stream) :
-        m_stream(&stream)
-    {
-        m_chunkSize = ParseBytes<std::uint32_t>(*m_stream);
-    }
-
-public:
-    template<class Ty>
-        requires std::integral<Ty> || std::floating_point<Ty>
-    Ty Read()
-    {
-        return std::bit_cast<Ty>(Read<sizeof(Ty)>());
-    }
-
-    template<size_t Count>
-    Bytes<Count> Read()
-    {
-        std::uint32_t bytesRead = m_bytesRead + Count;
-
-        if(bytesRead > m_chunkSize)
-            throw std::out_of_range("Reading memory outside of range");
-
-        m_bytesRead = bytesRead;
-
-        return ReadBytes<Count>(*m_stream);
-    }
-
-    bool HasUnreadData() const noexcept { return m_bytesRead < m_chunkSize; }
-
-    std::uint32_t ChunkSize() const noexcept { return m_chunkSize; }
-};
-
-std::unique_ptr<ChunkData::TypeErasedData> SkipChunk(ChunkInputStream& stream)
-{
-    while(stream.HasUnreadData())
-        stream.Read<1>();
-
-    return nullptr;
-}
-
-class PNGInputStream
-{
-    std::istream* m_stream;
-
-public:
-    PNGInputStream(std::istream& stream) :
-        m_stream(&stream)
+    using std::runtime_error::runtime_error;
+    UnknownChunkError() :
+        std::runtime_error("Could not parse unknown chunk\n")
     {
 
     }
 
-public:
-    bool Reading() const noexcept { return !m_stream->eof(); }
-    Chunk ParseChunk()
+    UnknownChunkError(ChunkType type) :
+        std::runtime_error(std::string("Could not parse chunk: ") + type.ToString() + "\n"),
+        m_type(type)
     {
-        ChunkInputStream chunkStream{ *m_stream };
-        ChunkData data;
-        data.type = ChunkType(ParseBytes<std::uint32_t>(*m_stream));
-        std::cout << data.type.ToString() << "\n";
 
-        data.data = [&chunkStream](ChunkType type)
-        {
-            switch(type)
-            {
-            case "IHDR"_ct:
-                return SkipChunk(chunkStream);
-            case "PLTE"_ct:
-                return SkipChunk(chunkStream);
-            case "IDAT"_ct:
-                return SkipChunk(chunkStream);
-            case "IEND"_ct:
-                return SkipChunk(chunkStream);
-            case "cHRM"_ct:
-                return SkipChunk(chunkStream);
-            case "gAMA"_ct:
-                return SkipChunk(chunkStream);
-            case "iCCP"_ct:
-                return SkipChunk(chunkStream);
-            case "sBIT"_ct:
-                return SkipChunk(chunkStream);
-            case "sRGB"_ct:
-                return SkipChunk(chunkStream);
-            case "bKGD"_ct:
-                return SkipChunk(chunkStream);
-            case "hIST"_ct:
-                return SkipChunk(chunkStream);
-            case "tRNS"_ct:
-                return SkipChunk(chunkStream);
-            case "pHYs"_ct:
-                return SkipChunk(chunkStream);
-            case "sPLT"_ct:
-                return SkipChunk(chunkStream);
-            case "tIME"_ct:
-                return SkipChunk(chunkStream);
-            case "iTXt"_ct:
-                return SkipChunk(chunkStream);
-            case "tEXt"_ct:
-                return SkipChunk(chunkStream);
-            case "zTXt"_ct:
-                return SkipChunk(chunkStream);
-            default:
-                return SkipChunk(chunkStream);
-            }
-        }(data.type);
-
-        ParseBytes<std::uint32_t>(*m_stream);
-
-        if(data.type == "IEND"_ct)
-        {
-            while(Reading())
-            {
-                m_stream->get();
-            }
-        }
-        return Chunk{};
     }
+
+    UnknownChunkError(std::string errorMsg, ChunkType type) : 
+        std::runtime_error(errorMsg),
+        m_type(type)
+    {
+
+    }
+
+
 };
 
 void VerifySignature(std::istream& stream)
@@ -183,14 +50,218 @@ void VerifySignature(std::istream& stream)
     }
 }
 
+template<class Lambda>
+class ScopeGuard
+{
+private:
+    Lambda m_l;
+    bool m_engaged = true;
+
+public:
+    ScopeGuard(Lambda l) :
+        m_l(l)
+    {
+
+    }
+    ScopeGuard(const ScopeGuard&) = default;
+    ScopeGuard(ScopeGuard&&) noexcept = default;
+    ~ScopeGuard()
+    {
+        if(m_engaged)
+            m_l();
+    };
+
+
+    ScopeGuard& operator=(const ScopeGuard&) = default;
+    ScopeGuard& operator=(ScopeGuard&&) noexcept = default;
+
+public:
+    void Disengage() { m_engaged = false; }
+};
+
+ChunkData ParseChunkData(std::istream& stream, std::uint32_t chunkSize, ChunkType type, std::span<const Chunk> chunks)
+{
+    std::cout << type.ToString() << "\n";
+    ChunkDataInputStream chunkStream{ stream, chunkSize };
+    ChunkData data;
+    switch(type)
+    {
+    case "IHDR"_ct:
+        data = ChunkTraits<"IHDR"_ct>::Parse(chunkStream, chunks);
+        break;
+    case "PLTE"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "IDAT"_ct:
+        //throw UnknownChunkError{ type };
+        data = ChunkTraits<"IDAT"_ct>::Parse(chunkStream, chunks);
+        break;
+    case "IEND"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "cHRM"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "gAMA"_ct:
+        data = ChunkTraits<"gAMA"_ct>::Parse(chunkStream, chunks);
+    case "iCCP"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "sBIT"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "sRGB"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "bKGD"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "hIST"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "tRNS"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "pHYs"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "sPLT"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "tIME"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "iTXt"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "tEXt"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    case "zTXt"_ct:
+        throw UnknownChunkError{ type };
+        break;
+    default:
+        throw UnknownChunkError{ type };
+        break;
+    }
+
+    if(chunkStream.HasUnreadData())
+    {
+        throw std::logic_error("Chunk data has not been fully parsed");
+    }
+
+    return data;
+}
+
+Chunk ParseChunk(std::istream& stream, std::span<const Chunk> chunks)
+{
+    std::uint32_t chunkSize = ParseBytes<std::uint32_t>(stream);
+    ChunkType type{ ParseBytes<std::uint32_t>(stream) };
+
+    ScopeGuard endChunkCleanUp = [&]
+    {
+        if(type == "IEND"_ct)
+        {
+            while(!stream.eof())
+            {
+                stream.get();
+            }
+        }
+    };
+    ScopeGuard crcCleanUp = [&]
+    {
+        ParseBytes<std::uint32_t>(stream);
+    };
+
+    ChunkData data = ParseChunkData(stream, chunkSize, type, chunks);
+    std::uint32_t crc = ParseBytes<std::uint32_t>(stream);
+
+    crcCleanUp.Disengage();
+    return Chunk{ chunkSize, type, std::move(data), crc };
+}
+
+std::vector<Chunk> ParseChunks(std::istream& stream)
+{
+    std::vector<Chunk> chunks;
+
+    while(!stream.eof())
+    {
+        try
+        {
+            chunks.push_back(ParseChunk(stream, chunks));
+        }
+        catch(UnknownChunkError& e)
+        {
+            std::cout << e.what();
+        }
+    }
+
+    return chunks;
+}
+
+std::vector<Byte> ConcatDataChunks(std::span<const Chunk> chunks)
+{
+    auto firstChunk = std::ranges::find_if(chunks, [](const Chunk& chunk) { return chunk.Type() == "IDAT"_ct; });
+ 
+    size_t totalSize = 0;
+    for(auto begin = firstChunk; begin != chunks.end() && begin->Type() == "IDAT"_ct; ++begin)
+    {
+        totalSize += begin->Data<ChunkTraits<"IDAT"_ct>::Data>().bytes.size();
+    }
+
+    std::vector<Byte> dataBytes;
+    dataBytes.reserve(totalSize);
+
+    for(auto begin = firstChunk; begin != chunks.end() && begin->Type() == "IDAT"_ct; ++begin)
+    {
+        auto data = begin->Data<ChunkTraits<"IDAT"_ct>::Data>();
+        std::copy(data.bytes.begin(), data.bytes.end(), std::back_inserter(dataBytes));
+    }
+
+    return dataBytes;
+}
+
+std::vector<Byte> DecompressImage(std::vector<Byte> chunks)
+{
+    z_stream zstream = {};
+    zstream.next_in = chunks.data();
+    zstream.avail_in =  chunks.size();
+
+    std::vector<Byte> decompressedImage;
+    decompressedImage.resize(chunks.size());
+
+    if(inflateInit(&zstream) != Z_OK)
+        throw std::exception("zstream failed to initialize");
+
+    ScopeGuard endInflate = [&zstream]
+    {        
+        if(inflateEnd(&zstream) != Z_OK)
+        {
+            throw std::exception("unknown error");
+        }
+    };
+
+    for(int i = 0; zstream.avail_in > 0; i++)
+    {
+        zstream.next_out = &decompressedImage[chunks.size() * i];
+        zstream.avail_out = chunks.size();
+
+        if(auto cont = inflate(&zstream, Z_FULL_FLUSH); !(cont == Z_OK || cont == Z_STREAM_END))
+        {
+            throw std::exception("unknown error");
+        }
+
+        decompressedImage.resize(decompressedImage.size() + chunks.size());
+    }
+
+    return decompressedImage;
+}
+
 void ParsePNG(std::istream& stream)
 {
     VerifySignature(stream);
-    PNGInputStream pngStream{ stream };
-    std::vector<Chunk> chunks;
-    
-    while(pngStream.Reading())
-    {
-        chunks.push_back(pngStream.ParseChunk());    
-    }
+    std::vector<Chunk> chunks = ParseChunks(stream);
+    std::vector<Byte> decompressedImage = DecompressImage(ConcatDataChunks(chunks));
+
+
 }

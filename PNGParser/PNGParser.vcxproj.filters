@@ -24,6 +24,15 @@
     <ClCompile Include="PNGParser.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ChunkParser.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PlatformDetection.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ChunkData.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="PNGParser.h">
