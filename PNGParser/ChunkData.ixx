@@ -134,6 +134,9 @@ struct ChunkData
     }
 };
 
+export template<ChunkType Ty>
+struct ChunkTraits;
+
 export class Chunk
 {
     std::uint32_t m_length;
@@ -173,8 +176,23 @@ public:
         return static_cast<const ChunkData::Data<Type>&>(*m_data.data).internalData;
     };
 
-    //template<ChunkType Type>
-    //Type& Data() { };
+    template<ChunkType Ty>
+    typename ChunkTraits<Ty>::Data& Data()
+    {
+        if(typeid(*m_data.data) != typeid(ChunkData::template Data<typename ChunkTraits<Ty>::Data>))
+            throw std::bad_cast();
+
+        return static_cast<ChunkData::Data<typename ChunkTraits<Ty>::Data>&>(*m_data.data).internalData;
+    };
+
+    template<ChunkType Ty>
+    const typename ChunkTraits<Ty>::Data& Data() const
+    {
+        if(typeid(*m_data.data) != typeid(ChunkData::template Data<typename ChunkTraits<Ty>::Data>))
+            throw std::bad_cast();
+
+        return static_cast<const ChunkData::Data<typename ChunkTraits<Ty>::Data>&>(*m_data.data).internalData;
+    };
 };
 
 
@@ -196,6 +214,61 @@ struct ChunkTraits<"IHDR"_ct>
         std::int8_t compressionMethod;
         std::int8_t filterMethod;
         std::int8_t interlaceMethod;
+
+        std::uint32_t SubpixelPerPixel() const
+        {
+            switch(colorType)
+            {
+            case 0:
+                return 1;
+            case 2:
+                return 3;
+            case 3:
+                return 1;
+            case 4:
+                return 2;
+            case 6:
+                return 4;
+            }
+
+            throw std::exception("Unexpected pixel type");
+        }
+
+        std::uint32_t BytesPerPixel() const 
+        {
+            return std::max(bitDepth / 8, 1) * SubpixelPerPixel();
+        }
+
+        std::uint32_t FilteredScanlineSize() const
+        {
+            static constexpr std::uint32_t filterByteCount = 1;
+            return filterByteCount + (width * BytesPerPixel());
+        }
+
+        std::uint32_t FilteredImageSize() const
+        {
+            return FilteredScanlineSize() * height;
+        }
+
+        std::uint32_t FilterByte(std::size_t scanline) const
+        {
+            return FilteredScanlineSize() * scanline;
+        }
+
+        std::span<Byte> ScanlineSubspanNoFilterByte(std::span<Byte> decompressedImageData, std::size_t scanline) const
+        {
+            return decompressedImageData.subspan(FilteredScanlineSize() * scanline + 1, ScanlineSize());
+        }
+
+        std::uint32_t ScanlineSize() const
+        {
+            return (width * BytesPerPixel());
+        }
+
+        std::uint32_t ImageSize() const
+        {
+            return (width * height * BytesPerPixel());
+        }
     };
 
     static constexpr size_t maxSize = 13;
@@ -240,6 +313,32 @@ struct ChunkTraits<"gAMA"_ct>
         Data data;
 
         data.gamma = stream.Read<std::uint32_t>();
+
+        return data;
+    }
+};
+
+template<>
+struct ChunkTraits<"sRGB"_ct>
+{
+    static constexpr ChunkType identifier = "sRGB"_ct;
+    static constexpr std::string_view name = "Standard RGB Color Space";
+
+    struct Data
+    {
+        Byte renderingIntent;
+    };
+
+    static constexpr size_t maxSize = sizeof(Data);
+
+    static ChunkData Parse(ChunkDataInputStream& stream, std::span<const Chunk> chunks)
+    {
+        if(stream.ChunkSize() != maxSize)
+            throw std::runtime_error(identifier.ToString() + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
+
+        Data data;
+
+        data.renderingIntent = stream.Read<Byte >();
 
         return data;
     }

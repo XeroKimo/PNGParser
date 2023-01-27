@@ -8,12 +8,21 @@ module;
 #include <algorithm>
 #include <span>
 #include <string>
+#include <vector>
+#include <istream>
 
 export module PNGParser;
 import :PlatformDetection;
 export import :ChunkParser;
 export import :ChunkData;
-export import <istream>;
 
-export void ParsePNG(std::istream& stream);
+export struct Image
+{
+    int width;
+    int height;
+    std::vector<Byte> imageBytes;
+    int pitch;
+};
+
+export Image ParsePNG(std::istream& stream);
 
