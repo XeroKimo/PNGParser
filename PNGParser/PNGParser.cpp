@@ -26,7 +26,7 @@ public:
     }
 
     UnknownChunkError(ChunkType type) :
-        std::runtime_error(std::string("Could not parse chunk: ") + type.ToString() + "\n"),
+        std::runtime_error(std::string("Could not parse chunk: ") + std::string(type.ToString()) + "\n"),
         m_type(type)
     {
 
@@ -95,23 +95,22 @@ ChunkData ParseChunkData(std::istream& stream, std::uint32_t chunkSize, ChunkTyp
     switch(type)
     {
     case "IHDR"_ct:
-        data = Parse<"IHDR"_ct>(chunkStream, chunks);
+        data = Parse<"IHDR">(chunkStream, chunks);
         break;
     case "PLTE"_ct:
         throw UnknownChunkError{ type };
         break;
     case "IDAT"_ct:
         //throw UnknownChunkError{ type };
-        data = Parse<"IDAT"_ct>(chunkStream, chunks);
+        data = Parse<"IDAT">(chunkStream, chunks);
         break;
     case "IEND"_ct:
-        throw UnknownChunkError{ type };
         break;
     case "cHRM"_ct:
         throw UnknownChunkError{ type };
         break;
     case "gAMA"_ct:
-        data = Parse<"gAMA"_ct>(chunkStream, chunks);
+        data = Parse<"gAMA">(chunkStream, chunks);
         break;
     case "iCCP"_ct:
         throw UnknownChunkError{ type };
@@ -120,7 +119,7 @@ ChunkData ParseChunkData(std::istream& stream, std::uint32_t chunkSize, ChunkTyp
         throw UnknownChunkError{ type };
         break;
     case "sRGB"_ct:
-        data = Parse<"sRGB"_ct>(chunkStream, chunks);
+        data = Parse<"sRGB">(chunkStream, chunks);
         break;
     case "bKGD"_ct:
         throw UnknownChunkError{ type };
@@ -165,11 +164,11 @@ ChunkData ParseChunkData(std::istream& stream, std::uint32_t chunkSize, ChunkTyp
 Chunk ParseChunk(std::istream& stream, std::span<const Chunk> chunks)
 {
     std::uint32_t chunkSize = ParseBytes<std::uint32_t>(stream);
-    ChunkType type{ ParseBytes<std::uint32_t>(stream) };
+    ChunkType type{ ReadBytes<4>(stream) };
 
     ScopeGuard endChunkCleanUp = [&]
     {
-        if(type == "IEND"_ct)
+        if(type == "IEND")
         {
             while(!stream.eof())
             {
@@ -210,20 +209,20 @@ std::vector<Chunk> ParseChunks(std::istream& stream)
 
 std::vector<Byte> ConcatDataChunks(std::span<const Chunk> chunks)
 {
-    auto firstChunk = std::ranges::find_if(chunks, [](const Chunk& chunk) { return chunk.Type() == "IDAT"_ct; });
+    auto firstChunk = std::ranges::find_if(chunks, [](const Chunk& chunk) { return chunk.Type() == "IDAT"; });
  
     size_t totalSize = 0;
-    for(auto begin = firstChunk; begin != chunks.end() && begin->Type() == "IDAT"_ct; ++begin)
+    for(auto begin = firstChunk; begin != chunks.end() && begin->Type() == "IDAT"; ++begin)
     {
-        totalSize += begin->Data<"IDAT"_ct>().bytes.size();
+        totalSize += begin->Data<"IDAT">().bytes.size();
     }
 
     std::vector<Byte> dataBytes;
     dataBytes.reserve(totalSize);
 
-    for(auto begin = firstChunk; begin != chunks.end() && begin->Type() == "IDAT"_ct; ++begin)
+    for(auto begin = firstChunk; begin != chunks.end() && begin->Type() == "IDAT"; ++begin)
     {
-        auto data = begin->Data<"IDAT"_ct>();
+        auto data = begin->Data<"IDAT">();
         std::copy(data.bytes.begin(), data.bytes.end(), std::back_inserter(dataBytes));
     }
 
@@ -248,7 +247,7 @@ std::vector<Byte> DecompressImage(std::vector<Byte> dataBytes, std::span<const C
     };
 
     std::vector<Byte> decompressedImage;
-    decompressedImage.resize(chunks[0].Data<"IHDR"_ct>().FilteredImageSize());
+    decompressedImage.resize(chunks[0].Data<"IHDR">().FilteredImageSize());
 
     zstream.next_out = &decompressedImage[0];
     zstream.avail_out = decompressedImage.size();
@@ -294,7 +293,7 @@ private:
 public:
     ImageDefilterer(std::vector<Byte> decompressedImage, std::span<const Chunk> chunks)
     {
-        const auto& headerData = chunks[0].Data<"IHDR"_ct>();
+        const auto& headerData = chunks[0].Data<"IHDR">();
         m_bytesPerPixel = headerData.BytesPerPixel();
 
         m_currentScanline.resize(headerData.ScanlineSize() + m_bytesPerPixel);
@@ -436,7 +435,7 @@ std::vector<Byte> DefilterImage(std::vector<Byte> decompressedImage, std::span<c
 
 std::vector<Byte> DeinterlaceImage(std::vector<Byte> defilteredImage, std::span<const Chunk> chunks)
 {
-    const auto& headerData = chunks[0].Data<"IHDR"_ct>();
+    const auto& headerData = chunks[0].Data<"IHDR">();
 
     return defilteredImage;
 }
@@ -449,10 +448,11 @@ Image ParsePNG(std::istream& stream)
 
     Image i;
     i.imageBytes = DeinterlaceImage(DefilterImage(std::move(decompressedImage), chunks), chunks);
-    const auto& headerData = chunks[0].Data<"IHDR"_ct>();
+    const auto& headerData = chunks[0].Data<"IHDR">();
     i.width = headerData.width;
     i.height = headerData.height;
     i.pitch = headerData.ScanlineSize();
+    i.bitDepth = headerData.bitDepth * headerData.BytesPerPixel();
 
     return i;
 }

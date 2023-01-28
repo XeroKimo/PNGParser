@@ -8,6 +8,7 @@ module;
 #include <span>
 #include <stdexcept>
 #include <vector>
+#include <array>
 
 export module PNGParser:ChunkData;
 import :ChunkParser;
@@ -23,77 +24,104 @@ constexpr bool IsLowercase(Byte b)
     return b >= 'a' && b <= 'z';
 }
 
+template<size_t N>
+struct ConstString
+{
+    using c_string_ref = const char(&)[N + 1];
+
+    std::array<char, N> string;
+
+    constexpr ConstString() = default;
+    constexpr ConstString(std::array<char, N> string) :
+        string(string)
+    {
+    }
+    constexpr ConstString(std::array<unsigned char, N> string) :
+        string(std::bit_cast<std::array<char, N>>(string))
+    {
+    }
+    constexpr ConstString(const char(&string)[N + 1])
+    {
+        std::copy(std::begin(string), std::end(string) - 1, std::begin(this->string));
+    }
+
+    constexpr char& At(size_t index) { return string.at(index); }
+    constexpr const char& At(size_t index) const { return string.at(index); }
+
+    constexpr auto begin() noexcept { return string.begin(); }
+    constexpr auto end() noexcept { return string.end(); }
+
+    constexpr auto begin() const noexcept { return string.begin(); }
+    constexpr auto end() const noexcept { return string.end(); }
+
+    constexpr char& operator[](size_t index) noexcept { return string[index]; }
+    constexpr const char& operator[](size_t index) const noexcept { return string[index]; }
+
+    constexpr bool operator==(const ConstString& rh) const noexcept { return string == rh.string; }
+    constexpr bool operator!=(const ConstString& rh) const noexcept { return string != rh.string; }
+};
+
+template<size_t N>
+ConstString(const char (&string)[N]) -> ConstString<N - 1>;
+
 export struct ChunkType
 {
-    std::uint32_t identifier;
+    ConstString<4> identifier;
 
     constexpr ChunkType() = default;
-    constexpr ChunkType(std::uint32_t identifier) :
-        identifier(identifier)
+    constexpr ChunkType(std::array<char, 4> string) :
+        identifier(string)
     {
-        auto bytes = std::bit_cast<Bytes<4>>(identifier);
+        VerifyString();
+    }
+    constexpr ChunkType(std::array<unsigned char, 4> string) :
+        identifier(string)
+    {
+        VerifyString();
+    }
+    constexpr ChunkType(ConstString<4> string) :
+        identifier(string)
+    {
+        VerifyString();
+    }
 
-        for(auto byte : bytes)
+    constexpr ChunkType(ConstString<4>::c_string_ref string) :
+        identifier(string)
+    {
+        VerifyString();
+    }
+
+    constexpr std::string_view ToString() const noexcept { return { &identifier[0], identifier.string.size() }; }
+
+    constexpr bool IsCritical() const noexcept { return IsUppercase(identifier[0]); }
+    constexpr bool IsPrivate() const noexcept { return IsUppercase(identifier[1]); }
+    constexpr bool Copyable() const noexcept { return !IsUppercase(identifier[3]); }
+
+    constexpr operator std::uint32_t() noexcept { return std::bit_cast<std::uint32_t>(identifier.string); }
+    constexpr operator const std::uint32_t() const noexcept { return std::bit_cast<std::uint32_t>(identifier.string); }
+
+    constexpr bool operator==(const ChunkType& rh) const noexcept { return identifier == rh.identifier; }
+    constexpr bool operator!=(const ChunkType& rh) const noexcept { return identifier != rh.identifier; }
+
+private:
+    constexpr void VerifyString()
+    {
+        for(auto byte : identifier.string)
         {
             if(!(IsUppercase(byte) || IsLowercase(byte)))
                 throw std::exception("String must only contain Alphabetical characters");
         }
     }
-
-    std::string ToString() const noexcept { return std::string{ reinterpret_cast<const char*>(ByteInterpretation().data()), sizeof(identifier) }; }
-    std::string_view ToNativeString() const noexcept { return std::string_view{ reinterpret_cast<const char*>(identifier), sizeof(identifier) }; }
-
-    constexpr bool IsCritical() const noexcept { return IsUppercase(ByteInterpretation()[0]); }
-    constexpr bool IsPrivate() const noexcept { return IsUppercase(ByteInterpretation()[1]); }
-    constexpr bool Copyable() const noexcept { return !IsUppercase(ByteInterpretation()[3]); }
-
-    constexpr operator std::uint32_t() noexcept { return identifier; }
-    constexpr operator const std::uint32_t() const noexcept { return identifier; }
-
-private:
-    constexpr Bytes<sizeof(identifier)> ByteInterpretation() const noexcept
-    {
-        return ToNativeRepresentation(NativeByteInterpretation());
-    }
-
-    constexpr Bytes<sizeof(identifier)> NativeByteInterpretation() const noexcept
-    {
-        return std::bit_cast<Bytes<sizeof(identifier)>>(identifier);
-    }
 };
 
-export constexpr ChunkType operator""_ct(const char* str, std::size_t len)
+constexpr ChunkType operator""_ct(const char* string, size_t n)
 {
-    if(len != 4)
-        throw std::exception("String length must be 4");
+    if(n > 4)
+        throw std::exception("Expected string size to be 4");
 
-    using ChunkTypeBytes = Bytes<4>;
-
-    ChunkTypeBytes bytes = [str]() -> ChunkTypeBytes
-    {
-        if constexpr(SwapByteOrder)
-        {
-            return
-            {
-                static_cast<Byte>(str[3]),
-                static_cast<Byte>(str[2]),
-                static_cast<Byte>(str[1]),
-                static_cast<Byte>(str[0]),
-            };
-        }
-        else
-        {
-            return
-            {
-                static_cast<Byte>(str[0]),
-                static_cast<Byte>(str[1]),
-                static_cast<Byte>(str[2]),
-                static_cast<Byte>(str[3]),
-            };
-        }
-    }();
-
-    return ChunkType{ std::bit_cast<std::uint32_t>(bytes) };
+    ConstString<4> constString;
+    std::copy_n(string, 4, constString.begin());
+    return ChunkType(constString);
 }
 
 struct ChunkData
@@ -200,9 +228,9 @@ export template<ChunkType Ty>
 struct ChunkTraits;
 
 template<>
-struct ChunkTraits<"IHDR"_ct>
+struct ChunkTraits<"IHDR">
 {
-    static constexpr ChunkType identifier = "IHDR"_ct;
+    static constexpr ChunkType identifier = "IHDR";
     static constexpr std::string_view name = "Image Header";
 
     struct Data
@@ -276,7 +304,7 @@ struct ChunkTraits<"IHDR"_ct>
     static ChunkData Parse(ChunkDataInputStream& stream, std::span<const Chunk> chunks)
     {
         if(stream.ChunkSize() != maxSize)
-            throw std::runtime_error(identifier.ToString() + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
+            throw std::runtime_error(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
 
         Data data;
 
@@ -293,9 +321,9 @@ struct ChunkTraits<"IHDR"_ct>
 };
 
 template<>
-struct ChunkTraits<"gAMA"_ct>
+struct ChunkTraits<ConstString("gAMA")>
 {
-    static constexpr ChunkType identifier = "gAMA"_ct;
+    static constexpr ChunkType identifier = "gAMA";
     static constexpr std::string_view name = "Image Gamma";
 
     struct Data
@@ -308,7 +336,7 @@ struct ChunkTraits<"gAMA"_ct>
     static ChunkData Parse(ChunkDataInputStream& stream, std::span<const Chunk> chunks)
     {
         if(stream.ChunkSize() != maxSize)
-            throw std::runtime_error(identifier.ToString() + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
+            throw std::runtime_error(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
 
         Data data;
 
@@ -319,9 +347,9 @@ struct ChunkTraits<"gAMA"_ct>
 };
 
 template<>
-struct ChunkTraits<"sRGB"_ct>
+struct ChunkTraits<"sRGB">
 {
-    static constexpr ChunkType identifier = "sRGB"_ct;
+    static constexpr ChunkType identifier = "sRGB";
     static constexpr std::string_view name = "Standard RGB Color Space";
 
     struct Data
@@ -334,7 +362,7 @@ struct ChunkTraits<"sRGB"_ct>
     static ChunkData Parse(ChunkDataInputStream& stream, std::span<const Chunk> chunks)
     {
         if(stream.ChunkSize() != maxSize)
-            throw std::runtime_error(identifier.ToString() + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
+            throw std::runtime_error(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
 
         Data data;
 
@@ -345,9 +373,9 @@ struct ChunkTraits<"sRGB"_ct>
 };
 
 template<>
-struct ChunkTraits<"IDAT"_ct>
+struct ChunkTraits<"IDAT">
 {
-    static constexpr ChunkType identifier = "IDAT"_ct;
+    static constexpr ChunkType identifier = "IDAT";
     static constexpr std::string_view name = "Image Data";
 
     struct Data

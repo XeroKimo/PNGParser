@@ -22,6 +22,7 @@ export struct Image
     int height;
     std::vector<Byte> imageBytes;
     int pitch;
+    int bitDepth;
 };
 
 export Image ParsePNG(std::istream& stream);

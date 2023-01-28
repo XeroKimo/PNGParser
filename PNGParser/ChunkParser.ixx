@@ -12,6 +12,16 @@ Bytes<Count> ReadBytes(std::istream& stream)
 {
     using Byte = Bytes<Count>::value_type;
     Bytes<Count> bytes;
+    for(Byte& b : bytes)
+        b = static_cast<Byte>(stream.get());
+    return bytes;
+}
+
+template<size_t Count>
+Bytes<Count> ReadNativeBytes(std::istream& stream)
+{
+    using Byte = Bytes<Count>::value_type;
+    Bytes<Count> bytes;
 
     if constexpr(SwapByteOrder)
     {
@@ -35,7 +45,7 @@ template<class Ty>
     requires std::integral<Ty> || std::floating_point<Ty>
 Ty ParseBytes(std::istream& stream)
 {
-    return std::bit_cast<Ty>(ReadBytes<sizeof(Ty)>(stream));
+    return std::bit_cast<Ty>(ReadNativeBytes<sizeof(Ty)>(stream));
 };
 
 export class ChunkDataInputStream
@@ -98,7 +108,7 @@ public:
 
         m_bytesRead = bytesRead;
 
-        return ReadBytes<Count>(*m_stream);
+        return ReadNativeBytes<Count>(*m_stream);
     }
 
     bool HasUnreadData() const noexcept { return m_bytesRead < m_chunkSize; }

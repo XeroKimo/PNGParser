@@ -31,4 +31,4 @@ constexpr Bytes<Count> ToNativeRepresentation(Bytes<Count> bytes)
         return bytes;
 }
 
-export inline constexpr Bytes<8> PNGSignature = ToNativeRepresentation(Bytes<8>{ 137, 80, 78, 71, 13, 10, 26, 10 });
+export inline constexpr Bytes<8> PNGSignature = Bytes<8>{ 137, 80, 78, 71, 13, 10, 26, 10 };
