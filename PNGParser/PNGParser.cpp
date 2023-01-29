@@ -10,6 +10,9 @@ module;
 #include <span>
 #include <zlib.h>
 #include <cassert>
+#include <tuple>
+#include <optional>
+#include <numeric>
 
 module PNGParser;
 
@@ -42,15 +45,6 @@ public:
 
 };
 
-void VerifySignature(std::istream& stream)
-{
-    auto signature = ReadBytes<PNGSignature.size()>(stream);
-    if(signature != PNGSignature)
-    {
-        throw std::exception("PNG signature could not be matched");
-    }
-}
-
 template<class Lambda>
 class ScopeGuard
 {
@@ -80,156 +74,265 @@ public:
     void Disengage() { m_engaged = false; }
 };
 
+void VerifySignature(std::istream& stream)
+{
+    auto signature = ReadBytes<PNGSignature.size()>(stream);
+    if(signature != PNGSignature)
+    {
+        throw std::exception("PNG signature could not be matched");
+    }
+}
+
+template<ChunkType Ty, bool Optional, bool Multiple>
+struct ChunkContainerImpl;
+
 template<ChunkType Ty>
-ChunkData Parse(ChunkDataInputStream& stream, std::span<const Chunk> chunks)
+struct ChunkContainerImpl<Ty, false, false>
 {
-    return ChunkTraits<Ty>::Parse(stream, chunks);
-}
+    using type = ChunkTraits<Ty>::Data;
+};
 
-ChunkData ParseChunkData(std::istream& stream, std::uint32_t chunkSize, ChunkType type, std::span<const Chunk> chunks)
+template<ChunkType Ty>
+struct ChunkContainerImpl<Ty, false, true>
 {
-    std::cout << type.ToString() << "\n";
-    ChunkDataInputStream chunkStream{ stream, chunkSize };
-    ChunkData data;
+    using type = std::vector<typename ChunkTraits<Ty>::Data>;
+};
 
-    switch(type)
+template<ChunkType Ty>
+struct ChunkContainerImpl<Ty, true, false>
+{
+    using type = std::optional<typename ChunkTraits<Ty>::Data>;
+};
+
+template<ChunkType Ty>
+struct ChunkContainerImpl<Ty, true, true>
+{
+    using type = std::vector<typename ChunkTraits<Ty>::Data>;
+};
+
+template<ChunkType Ty>
+using ChunkContainer = ChunkContainerImpl<Ty, ChunkTraits<Ty>::is_optional, ChunkTraits<Ty>::multiple_allowed>::type;
+
+using StandardChunks = std::tuple<
+    ChunkContainer<"IHDR">,
+    ChunkContainer<"IDAT">>;
+
+struct DecodedChunks
+{
+    StandardChunks standardChunks;
+
+    template<ChunkType Ty>
+    ChunkContainer<Ty>& Get() noexcept
     {
-    case "IHDR"_ct:
-        data = Parse<"IHDR">(chunkStream, chunks);
-        break;
-    case "PLTE"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "IDAT"_ct:
-        //throw UnknownChunkError{ type };
-        data = Parse<"IDAT">(chunkStream, chunks);
-        break;
-    case "IEND"_ct:
-        break;
-    case "cHRM"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "gAMA"_ct:
-        data = Parse<"gAMA">(chunkStream, chunks);
-        break;
-    case "iCCP"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "sBIT"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "sRGB"_ct:
-        data = Parse<"sRGB">(chunkStream, chunks);
-        break;
-    case "bKGD"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "hIST"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "tRNS"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "pHYs"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "sPLT"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "tIME"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "iTXt"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "tEXt"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    case "zTXt"_ct:
-        throw UnknownChunkError{ type };
-        break;
-    default:
-        throw UnknownChunkError{ type };
-        break;
+        return std::get<ChunkContainer<Ty>>(standardChunks);
     }
 
-    if(chunkStream.HasUnreadData())
+    template<ChunkType Ty>
+    const ChunkContainer<Ty>& Get() const noexcept
     {
-        throw std::logic_error("Chunk data has not been fully parsed");
+        return std::get<ChunkContainer<Ty>>(standardChunks);
     }
+};
 
-    return data;
-}
 
-Chunk ParseChunk(std::istream& stream, std::span<const Chunk> chunks)
+class ChunkDecoder
 {
-    std::uint32_t chunkSize = ParseBytes<std::uint32_t>(stream);
-    ChunkType type{ ReadBytes<4>(stream) };
+    //void OrderingConstraintSignature(std::istream& stream) {  }
 
-    ScopeGuard endChunkCleanUp = [&]
+private:
+    DecodedChunks m_chunks;
+    //decltype(&OrderingConstraintSignature) m_parseChunkState = &FirstChunk;
+
+public:
+    ChunkDecoder(std::istream& stream)
     {
-        if(type == "IEND")
+        while(!stream.eof())
         {
-            while(!stream.eof())
+            try
             {
-                stream.get();
+                //(this->*m_parseChunkState)(stream);
+                ParseChunk(stream, [](ChunkType e) {});
+            }
+            catch(UnknownChunkError&)
+            {
+
             }
         }
-    };
-    ScopeGuard crcCleanUp = [&]
+    }
+
+    DecodedChunks& Chunks() & noexcept { return m_chunks; }
+    const DecodedChunks& Chunks() const & noexcept { return m_chunks; }
+    DecodedChunks& Chunks() && noexcept { return m_chunks; }
+    const DecodedChunks& Chunks() const && noexcept { return m_chunks; }
+
+
+
+private:
+    template<std::invocable<ChunkType> OrderingConstraintCheck>
+    ChunkType ParseChunk(std::istream& stream, OrderingConstraintCheck fn)
     {
-        ParseBytes<std::uint32_t>(stream);
-    };
+        std::uint32_t chunkSize = ParseBytes<std::uint32_t>(stream);
+        ChunkType type{ ReadBytes<4>(stream) };
 
-    ChunkData data = ParseChunkData(stream, chunkSize, type, chunks);
-    std::uint32_t crc = ParseBytes<std::uint32_t>(stream);
-
-    crcCleanUp.Disengage();
-    return Chunk{ chunkSize, type, std::move(data), crc };
-}
-
-std::vector<Chunk> ParseChunks(std::istream& stream)
-{
-    std::vector<Chunk> chunks;
-
-    while(!stream.eof())
-    {
-        try
+        ScopeGuard endChunkCleanUp = [&]
         {
-            chunks.push_back(ParseChunk(stream, chunks));
+            if(type == "IEND")
+            {
+                while(!stream.eof())
+                {
+                    stream.get();
+                }
+            }
+        };
+        ScopeGuard crcCleanUp = [&]
+        {
+            ParseBytes<std::uint32_t>(stream);
+        };
+
+        VisitParseChunkData(stream, chunkSize, type, fn);
+        std::uint32_t crc = ParseBytes<std::uint32_t>(stream);
+
+        crcCleanUp.Disengage();
+
+        return type;
+    }
+
+    template<std::invocable<ChunkType> OrderingConstraintCheck>
+    void VisitParseChunkData(std::istream& stream, std::uint32_t chunkSize, ChunkType type, OrderingConstraintCheck fn)
+    {
+        ChunkDataInputStream chunkStream{ stream, chunkSize };
+
+        fn(type);
+
+        switch(type)
+        {
+        case "IHDR"_ct:
+            ParseChunkData<"IHDR">(chunkStream);
+            break;
+        case "IDAT"_ct:
+            ParseChunkData<"IDAT">(chunkStream);
+            break;
+        case "IEND"_ct:
+            break;
+        default:
+            throw UnknownChunkError{ type };
+            break;
         }
-        catch(UnknownChunkError& e)
+
+        if(chunkStream.HasUnreadData())
         {
-            std::cout << e.what();
+            throw std::logic_error("Chunk data has not been fully parsed");
         }
     }
 
-    return chunks;
-}
-
-std::vector<Byte> ConcatDataChunks(std::span<const Chunk> chunks)
-{
-    auto firstChunk = std::ranges::find_if(chunks, [](const Chunk& chunk) { return chunk.Type() == "IDAT"; });
- 
-    size_t totalSize = 0;
-    for(auto begin = firstChunk; begin != chunks.end() && begin->Type() == "IDAT"; ++begin)
+    template<ChunkType Ty>
+    void ParseChunkData(ChunkDataInputStream& stream)
     {
-        totalSize += begin->Data<"IDAT">().bytes.size();
+        if constexpr(ChunkTraits<Ty>::multiple_allowed)
+        {
+            m_chunks.Get<Ty>().push_back(ChunkTraits<Ty>::Parse(stream));
+        }
+        else
+        {
+            m_chunks.Get<Ty>() = ChunkTraits<Ty>::Parse(stream);
+        }
     }
+
+//Ordering constraint functions, no clue if it's important
+//private:
+//    void FirstChunk(std::istream& stream)
+//    {
+//        auto orderingConstraint = [](ChunkType type)
+//        {
+//            if(type != "IHDR")
+//            {
+//                throw std::exception("Header chunk not found");
+//            }
+//        };
+//        ParseChunk(stream, orderingConstraint);
+//
+//        ChangeState(BeforePLTE);
+//    }
+//
+//    void BeforePLTE(std::istream& stream)
+//    {
+//        auto orderingConstraint = [](ChunkType type)
+//        {
+//            if(type != "IHDR")
+//            {
+//                throw std::exception("Header chunk not found");
+//            }
+//        };
+//        ChunkType type = ParseChunk(stream, orderingConstraint);
+//
+//        if(type == "IDAT")
+//            ChangeState(DuringIDAT);
+//        else if(type == "bKGD" || type == "hIST" || type == "tRNS")
+//            ChangeState(BeforeIDAT);
+//    }
+//
+//    void BeforeIDAT(std::istream& stream)
+//    {
+//        auto orderingConstraint = [](ChunkType type)
+//        {
+//            if(type != "IHDR")
+//            {
+//                throw std::exception("Header chunk not found");
+//            }
+//        };
+//        ChunkType type = ParseChunk(stream, orderingConstraint);
+//
+//        if(type == "IDAT")
+//            ChangeState(DuringIDAT);
+//    }
+//
+//    void DuringIDAT(std::istream& stream)
+//    {
+//        auto orderingConstraint = [](ChunkType type)
+//        {
+//        };
+//
+//        if(ParseChunk(stream, orderingConstraint) != "IDAT")
+//        {
+//            m_parseChunkState = PostIDAT;
+//        }
+//    }
+//
+//    void PostIDAT(std::istream& stream)
+//    {
+//        std::uint32_t chunkSize = ParseBytes<std::uint32_t>(stream);
+//        ChunkType type{ ReadBytes<4>(stream) };
+//
+//        if(type != "IHDR")
+//        {
+//            throw std::exception("Header chunk not found");
+//        }
+//    }
+//
+//    void ChangeState(decltype(&OrderingConstraintSignature) stateFunction)
+//    {
+//        m_parseChunkState = stateFunction;
+//    }
+};
+
+std::vector<Byte> ConcatDataChunks(std::span<const ChunkData<"IDAT">> dataChunks)
+{
+    size_t sizeWritten = 0;
+    size_t totalSize = std::accumulate(dataChunks.begin(), dataChunks.end(), size_t(0), [](size_t val, const ChunkData<"IDAT">& d) { return val + d.bytes.size(); });
 
     std::vector<Byte> dataBytes;
-    dataBytes.reserve(totalSize);
+    dataBytes.resize(totalSize);
 
-    for(auto begin = firstChunk; begin != chunks.end() && begin->Type() == "IDAT"; ++begin)
+    for(const ChunkData<"IDAT">& data : dataChunks)
     {
-        auto data = begin->Data<"IDAT">();
-        std::copy(data.bytes.begin(), data.bytes.end(), std::back_inserter(dataBytes));
+        std::copy(data.bytes.begin(), data.bytes.end(), dataBytes.begin() + sizeWritten);
+        sizeWritten += data.bytes.size();
     }
 
     return dataBytes;
 }
 
-std::vector<Byte> DecompressImage(std::vector<Byte> dataBytes, std::span<const Chunk> chunks)
+std::vector<Byte> DecompressImage(std::vector<Byte> dataBytes, const ChunkData<"IHDR">& headerData)
 {
     z_stream zstream = {};
     zstream.next_in = dataBytes.data();
@@ -247,7 +350,7 @@ std::vector<Byte> DecompressImage(std::vector<Byte> dataBytes, std::span<const C
     };
 
     std::vector<Byte> decompressedImage;
-    decompressedImage.resize(chunks[0].Data<"IHDR">().FilteredImageSize());
+    decompressedImage.resize(headerData.FilteredImageSize());
 
     zstream.next_out = &decompressedImage[0];
     zstream.avail_out = decompressedImage.size();
@@ -291,9 +394,8 @@ private:
     std::vector<Byte> m_imageBytes;
 
 public:
-    ImageDefilterer(std::vector<Byte> decompressedImage, std::span<const Chunk> chunks)
+    ImageDefilterer(std::vector<Byte> decompressedImage, const ChunkData<"IHDR">& headerData)
     {
-        const auto& headerData = chunks[0].Data<"IHDR">();
         m_bytesPerPixel = headerData.BytesPerPixel();
 
         m_currentScanline.resize(headerData.ScanlineSize() + m_bytesPerPixel);
@@ -428,27 +530,21 @@ private:
     }
 };
 
-std::vector<Byte> DefilterImage(std::vector<Byte> decompressedImage, std::span<const Chunk> chunks)
+std::vector<Byte> DefilterImage(std::vector<Byte> decompressedImage, const ChunkData<"IHDR">& headerChunk)
 {
-    return ImageDefilterer{ decompressedImage, chunks }.Get().bytes;
-}
-
-std::vector<Byte> DeinterlaceImage(std::vector<Byte> defilteredImage, std::span<const Chunk> chunks)
-{
-    const auto& headerData = chunks[0].Data<"IHDR">();
-
-    return defilteredImage;
+    return ImageDefilterer{ decompressedImage, headerChunk }.Get().bytes;
 }
 
 Image ParsePNG(std::istream& stream)
 {
     VerifySignature(stream);
-    std::vector<Chunk> chunks = ParseChunks(stream);
-    std::vector<Byte> decompressedImage = DecompressImage(ConcatDataChunks(chunks), chunks);
 
-    Image i;
-    i.imageBytes = DeinterlaceImage(DefilterImage(std::move(decompressedImage), chunks), chunks);
-    const auto& headerData = chunks[0].Data<"IHDR">();
+    DecodedChunks chunks = ChunkDecoder{ stream }.Chunks();
+    std::vector<Byte> decompressedImage = DecompressImage(ConcatDataChunks(chunks.Get<"IDAT">()), chunks.Get<"IHDR">());
+
+    Image i{};
+    i.imageBytes = DefilterImage(std::move(decompressedImage), chunks.Get<"IHDR">());
+    const auto& headerData = chunks.Get<"IHDR">();
     i.width = headerData.width;
     i.height = headerData.height;
     i.pitch = headerData.ScanlineSize();

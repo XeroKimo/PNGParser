@@ -124,114 +124,22 @@ constexpr ChunkType operator""_ct(const char* string, size_t n)
     return ChunkType(constString);
 }
 
-struct ChunkData
-{
-    struct TypeErasedData
-    {
-        virtual ~TypeErasedData() = default;
-    };
-
-    template<class Ty>
-    struct Data : public TypeErasedData
-    {
-        Ty internalData;
-
-        Data(const Ty& t) :
-            internalData(t)
-        {
-
-        }
-
-        Data(Ty&& t) noexcept(noexcept(std::move(std::declval<Ty>()))) :
-            internalData(std::move(t))
-        {
-
-        }
-
-    };
-
-    std::unique_ptr<TypeErasedData> data;
-
-    ChunkData() = default;
-
-    template<class Ty>
-    ChunkData(Ty&& value) :
-        data(std::make_unique<Data<Ty>>(std::forward<Ty>(value)))
-    {
-
-    }
-};
+export template<ChunkType Ty>
+struct ChunkTraits;
 
 export template<ChunkType Ty>
 struct ChunkTraits;
 
-export class Chunk
-{
-    std::uint32_t m_length;
-    ChunkType m_type;
-    ChunkData m_data;
-    std::uint32_t m_CRC;
-
-public:
-    Chunk(std::uint32_t length, ChunkType type, ChunkData data, std::uint32_t CRC) :
-        m_length(length),
-        m_type(type),
-        m_data(std::move(data)),
-        m_CRC(CRC)
-    {
-
-    }
-
-public:
-    std::uint32_t Length() const noexcept { return m_length; }
-    ChunkType Type() const noexcept { return m_type; }
-
-    template<class Type>
-    Type& Data() 
-    {
-        if(typeid(*m_data.data) != typeid(ChunkData::template Data<Type>))
-            throw std::bad_cast();
-
-        return static_cast<ChunkData::Data<Type>&>(*m_data.data).internalData;
-    };
-
-    template<class Type>
-    const Type& Data() const
-    {
-        if(typeid(*m_data.data) != typeid(ChunkData::template Data<Type>))
-            throw std::bad_cast();
-
-        return static_cast<const ChunkData::Data<Type>&>(*m_data.data).internalData;
-    };
-
-    template<ChunkType Ty>
-    typename ChunkTraits<Ty>::Data& Data()
-    {
-        if(typeid(*m_data.data) != typeid(ChunkData::template Data<typename ChunkTraits<Ty>::Data>))
-            throw std::bad_cast();
-
-        return static_cast<ChunkData::Data<typename ChunkTraits<Ty>::Data>&>(*m_data.data).internalData;
-    };
-
-    template<ChunkType Ty>
-    const typename ChunkTraits<Ty>::Data& Data() const
-    {
-        if(typeid(*m_data.data) != typeid(ChunkData::template Data<typename ChunkTraits<Ty>::Data>))
-            throw std::bad_cast();
-
-        return static_cast<const ChunkData::Data<typename ChunkTraits<Ty>::Data>&>(*m_data.data).internalData;
-    };
-};
-
-
 export template<ChunkType Ty>
-struct ChunkTraits;
+using ChunkData = ChunkTraits<Ty>::Data;
 
 template<>
 struct ChunkTraits<"IHDR">
 {
     static constexpr ChunkType identifier = "IHDR";
     static constexpr std::string_view name = "Image Header";
+    static constexpr bool is_optional = false;
+    static constexpr bool multiple_allowed = false;
 
     struct Data
     {
@@ -301,7 +209,7 @@ struct ChunkTraits<"IHDR">
 
     static constexpr size_t maxSize = 13;
 
-    static ChunkData Parse(ChunkDataInputStream& stream, std::span<const Chunk> chunks)
+    static Data Parse(ChunkDataInputStream& stream)
     {
         if(stream.ChunkSize() != maxSize)
             throw std::runtime_error(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
@@ -321,10 +229,13 @@ struct ChunkTraits<"IHDR">
 };
 
 template<>
-struct ChunkTraits<ConstString("gAMA")>
+struct ChunkTraits<"gAMA">
 {
     static constexpr ChunkType identifier = "gAMA";
     static constexpr std::string_view name = "Image Gamma";
+    static constexpr bool is_optional = true;
+    static constexpr bool multiple_allowed = false;
+
 
     struct Data
     {
@@ -333,7 +244,7 @@ struct ChunkTraits<ConstString("gAMA")>
 
     static constexpr size_t maxSize = sizeof(Data);
 
-    static ChunkData Parse(ChunkDataInputStream& stream, std::span<const Chunk> chunks)
+    static Data Parse(ChunkDataInputStream& stream)
     {
         if(stream.ChunkSize() != maxSize)
             throw std::runtime_error(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
@@ -351,6 +262,8 @@ struct ChunkTraits<"sRGB">
 {
     static constexpr ChunkType identifier = "sRGB";
     static constexpr std::string_view name = "Standard RGB Color Space";
+    static constexpr bool is_optional = true;
+    static constexpr bool multiple_allowed = false;
 
     struct Data
     {
@@ -359,7 +272,7 @@ struct ChunkTraits<"sRGB">
 
     static constexpr size_t maxSize = sizeof(Data);
 
-    static ChunkData Parse(ChunkDataInputStream& stream, std::span<const Chunk> chunks)
+    static Data Parse(ChunkDataInputStream& stream)
     {
         if(stream.ChunkSize() != maxSize)
             throw std::runtime_error(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
@@ -377,6 +290,8 @@ struct ChunkTraits<"IDAT">
 {
     static constexpr ChunkType identifier = "IDAT";
     static constexpr std::string_view name = "Image Data";
+    static constexpr bool is_optional = false;
+    static constexpr bool multiple_allowed = true;
 
     struct Data
     {
@@ -387,7 +302,7 @@ struct ChunkTraits<"IDAT">
 
     static constexpr size_t maxSlidingWindowSize = 32768;
 
-    static ChunkData Parse(ChunkDataInputStream& stream, std::span<const Chunk> chunks)
+    static Data Parse(ChunkDataInputStream& stream)
     {
         Data data;
         data.bytes.reserve(stream.ChunkSize());

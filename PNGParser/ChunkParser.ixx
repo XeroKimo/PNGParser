@@ -71,23 +71,9 @@ public:
         other.m_bytesRead = 0;
     }
 
-    std::istream* Release() noexcept
-    {
-        std::istream* temp = m_stream;
-        m_stream = nullptr;
-
-        m_chunkSize = 0;
-        m_bytesRead = 0;
-
-        return temp;
-    }
-
     ~ChunkDataInputStream()
     {
-        while(HasUnreadData())
-        {
-            Read<1>();
-        }
+        Skip(UnreadSize());
     }
 
 public:
@@ -113,5 +99,13 @@ public:
 
     bool HasUnreadData() const noexcept { return m_bytesRead < m_chunkSize; }
 
+    void Skip(std::uint32_t count)
+    {
+        count = std::min(count, UnreadSize());
+        m_stream->seekg(count, std::ios_base::cur);
+        m_bytesRead = count;
+    }
+
     std::uint32_t ChunkSize() const noexcept { return m_chunkSize; }
+    std::uint32_t UnreadSize() const noexcept { return m_chunkSize - m_bytesRead; }
 };

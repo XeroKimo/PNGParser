@@ -22,7 +22,6 @@ int main()
 
     }
 
-
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
     SDL_Window* window;
     SDL_Renderer* renderer;
@@ -31,11 +30,9 @@ int main()
     auto er = SDL_GetError();
     SDL_Event e;
 
-    SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(im.imageBytes.data(), im.width, im.height, 24, im.pitch, 0x00'00'00'FF, 0x00'00'FF'00, 0x00'FF'00'00, 0);
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormatFrom(im.imageBytes.data(), im.width, im.height, im.bitDepth, im.pitch, SDL_PixelFormatEnum::SDL_PIXELFORMAT_ABGR8888);
     er = SDL_GetError();
-    SDL_Surface* surf = IMG_Load("Korone_NotLikeThis2.png");
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surf);
-    SDL_Texture* texture2 = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
 
     while(true)
     {
@@ -47,7 +44,7 @@ int main()
         else
         {
             SDL_RenderClear(renderer);
-            SDL_RenderCopy(renderer, texture2, nullptr, nullptr);
+            SDL_RenderCopy(renderer, texture, nullptr, nullptr);
             SDL_RenderPresent(renderer);
         }
     }
