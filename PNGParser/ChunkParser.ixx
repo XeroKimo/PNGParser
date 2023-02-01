@@ -78,7 +78,7 @@ public:
 
 public:
     template<class Ty>
-        requires std::integral<Ty> || std::floating_point<Ty>
+        requires std::integral<Ty> || std::floating_point<Ty> || std::is_enum_v<Ty>
     Ty Read()
     {
         return std::bit_cast<Ty>(Read<sizeof(Ty)>());

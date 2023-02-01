@@ -6,11 +6,31 @@
 #include <chrono>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <filesystem>
 import PNGParser;
 #undef main;
+
+void TestImageParser()
+{
+    for(auto dir_entry : std::filesystem::directory_iterator("Test Images"))
+    {
+        std::cout << dir_entry.path() << "\n";
+        try
+        {
+             std::fstream image{ "Test Images\\basi2c08.png", std::ios::binary | std::ios::in };
+             ParsePNG(image);
+        }
+        catch(const std::exception& e)
+        {
+            std::cout << "Failed to parse image: " << dir_entry.path() << "\nError: " << e.what() << "\n\n";
+        }
+    }
+}
+
 int main()
 {
-    std::fstream image{ "Korone_NotLikeThis2.png", std::ios::binary | std::ios::in };
+    //TestImageParser();
+    std::fstream image{ "Test Images/basi6a08.png", std::ios::binary | std::ios::in };
 
     Image im;
     if(image.is_open())
