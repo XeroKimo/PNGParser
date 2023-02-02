@@ -199,6 +199,11 @@ struct ChunkTraits<"IHDR">
             throw std::exception("Unexpected pixel type");
         }
 
+        std::uint32_t BitsPerPixel() const
+        {
+            return bitDepth * SubpixelPerPixel();
+        }
+
         std::uint32_t BytesPerPixel() const 
         {
             return std::max(bitDepth / 8, 1) * SubpixelPerPixel();
@@ -324,6 +329,135 @@ struct ChunkTraits<"IHDR">
     }
 };
 
+template<std::unsigned_integral ByteTy>
+    requires (sizeof(ByteTy) == 1)
+class FilteredScanline
+{
+private:
+    std::uint8_t m_bitDepth;
+    std::uint8_t m_subpixelCount;
+    std::span<ByteTy> m_bytes;
+
+public:
+    FilteredScanline(std::uint8_t bitDepth, std::uint8_t subpixelCount, std::span<ByteTy> bytes) noexcept :
+        m_bitDepth(bitDepth),
+        m_subpixelCount(subpixelCount),
+        m_bytes(bytes)
+    {
+
+    }
+
+    static FilteredScanline FromFilteredImage(std::span<ByteTy> imageBytes, std::uint32_t width, std::uint8_t bitDepth, std::uint8_t subpixelCount, size_t scanlineIndex)
+    {
+        std::uint32_t scanlineWidth = width * bitDepth * subpixelCount / 8;
+        std::uint32_t filteredScanlineWidth = scanlineWidth + ChunkData<"IHDR">::filterByteCount;
+        return FilteredScanline(bitDepth, subpixelCount, imageBytes.subspan(scanlineIndex * filteredScanlineWidth + ChunkData<"IHDR">::filterByteCount, scanlineWidth));
+    }
+
+public:
+    std::uint8_t GetFilterByte() const noexcept
+    {
+        return m_bytes[0];
+    }
+
+    std::uint8_t GetBytesPerPixel() const noexcept
+    {
+        return std::max(m_bitDepth / 8, 1) * m_subpixelCount;
+    }
+
+    std::span<ByteTy> GetPixel(size_t i) noexcept
+    {
+        assert(m_bitDepth >= 8);
+        return m_bytes.subspan(i * GetBytesPerPixel() + ChunkData<"IHDR">::filterByteCount, GetBytesPerPixel());
+    }
+
+    std::span<const ByteTy> GetPixel(size_t i) const noexcept
+    {
+        assert(m_bitDepth >= 8);
+        return m_bytes.subspan(i * GetBytesPerPixel() + ChunkData<"IHDR">::filterByteCount, GetBytesPerPixel());
+    }
+
+    std::uint32_t GetWidth() const noexcept
+    {
+        return (m_bitDepth < 8) ? m_bytes.size() : m_bytes.size() / GetBytesPerPixel();
+    }
+
+    std::span<ByteTy> GetData() noexcept
+    {
+        return m_bytes;
+    }
+
+    std::span<const ByteTy> GetData() const noexcept
+    {
+        return m_bytes;
+    }
+};
+
+template<std::unsigned_integral ByteTy>
+    requires (sizeof(ByteTy) == 1)
+class Scanline
+{
+private:
+    std::uint8_t m_bitDepth;
+    std::uint8_t m_subpixelCount;
+    std::span<ByteTy> m_bytes;
+
+public:
+    Scanline(std::uint8_t bitDepth, std::uint8_t subpixelCount, std::span<ByteTy> bytes) noexcept :
+        m_bitDepth(bitDepth),
+        m_subpixelCount(subpixelCount),
+        m_bytes(bytes)
+    {
+
+    }
+
+    static Scanline FromImage(std::span<ByteTy> imageBytes, std::uint32_t width, std::uint8_t bitDepth, std::uint8_t subpixelCount, size_t scanlineIndex)
+    {
+        std::uint32_t scanlineWidth = width * bitDepth * subpixelCount / 8;
+        return Scanline(bitDepth, subpixelCount, imageBytes.subspan(scanlineIndex * scanlineWidth, scanlineWidth));
+    }
+
+    static Scanline FromFilteredImage(std::span<ByteTy> imageBytes, std::uint32_t width, std::uint8_t bitDepth, std::uint8_t subpixelCount, size_t scanlineIndex)
+    {
+        std::uint32_t scanlineWidth = width * bitDepth * subpixelCount / 8;
+        std::uint32_t filteredScanlineWidth = scanlineWidth + ChunkData<"IHDR">::filterByteCount;
+        return Scanline(bitDepth, subpixelCount, imageBytes.subspan(scanlineIndex * filteredScanlineWidth + ChunkData<"IHDR">::filterByteCount, scanlineWidth));
+    }
+
+public:
+    std::uint8_t GetBytesPerPixel() const noexcept
+    {
+        return std::max(m_bitDepth / 8, 1) * m_subpixelCount;
+    }
+
+    std::span<ByteTy> GetPixel(size_t i) noexcept
+    {
+        assert(m_bitDepth >= 8);
+        return m_bytes.subspan(i * GetBytesPerPixel(), GetBytesPerPixel());
+    }
+
+    std::span<const ByteTy> GetPixel(size_t i) const noexcept
+    {
+        assert(m_bitDepth >= 8);
+        return m_bytes.subspan(i * GetBytesPerPixel(), GetBytesPerPixel());
+    }
+
+    std::uint32_t GetWidth() const noexcept
+    {
+        return (m_bitDepth < 8) ? m_bytes.size() : m_bytes.size() / GetBytesPerPixel();
+    }
+
+    std::span<ByteTy> GetData() noexcept
+    {
+        return m_bytes;
+    }
+
+    std::span<const ByteTy> GetData() const noexcept
+    {
+        return m_bytes;
+    }
+};
+
 struct FilteredReducedImageView
 {
     const ChunkData<"IHDR">* header;
@@ -347,9 +481,24 @@ struct FilteredReducedImageView
         return bytes[FilteredScanlineSize() * scanline];
     }
 
-    std::span<Byte> Scanline(std::size_t scanline) const
+    Scanline<Byte> GetScanline(std::size_t scanline)
     {
-        return bytes.subspan(FilteredScanlineSize() * scanline + ChunkData<"IHDR">::filterByteCount, ScanlineSize());
+        return Scanline<Byte>::FromFilteredImage(bytes, width, header->bitDepth, header->SubpixelPerPixel(), scanline);
+    }
+
+    Scanline<const Byte> GetScanline(std::size_t scanline) const
+    {
+        return Scanline<const Byte>::FromFilteredImage(bytes, width, header->bitDepth, header->SubpixelPerPixel(), scanline);
+    }
+
+    FilteredScanline<Byte> GetFilteredScanline(std::size_t scanline)
+    {
+        return FilteredScanline<Byte>::FromFilteredImage(bytes, width, header->bitDepth, header->SubpixelPerPixel(), scanline);
+    }
+
+    FilteredScanline<const Byte> GetFilteredScanline(std::size_t scanline) const
+    {
+        return FilteredScanline<const Byte>::FromFilteredImage(bytes, width, header->bitDepth, header->SubpixelPerPixel(), scanline);
     }
 
     std::uint32_t ScanlineSize() const
@@ -370,14 +519,14 @@ struct ReducedImage
     std::uint32_t height;
     std::vector<Byte> bytes;
 
-    std::span<Byte> Scanline(std::size_t scanline)
+    ::Scanline<Byte> Scanline(std::size_t scanline)
     {
-        return std::span(bytes.begin() + ScanlineSize() * scanline, ScanlineSize());
+        return ::Scanline<Byte>::FromImage(bytes, width, header->bitDepth, header->SubpixelPerPixel(), scanline);
     }
-    
-    std::span<const Byte> Scanline(std::size_t scanline) const
+
+    ::Scanline<const Byte> Scanline(std::size_t scanline) const
     {
-        return std::span(bytes.begin() + ScanlineSize() * scanline, ScanlineSize());
+        return ::Scanline<const Byte>::FromImage(bytes, width, header->bitDepth, header->SubpixelPerPixel(), scanline);
     }
 
     std::uint32_t ScanlineSize() const
