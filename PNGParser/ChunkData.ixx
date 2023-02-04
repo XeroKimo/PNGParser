@@ -199,12 +199,12 @@ struct ChunkTraits<"IHDR">
             throw std::exception("Unexpected pixel type");
         }
 
-        std::uint32_t BitsPerPixel() const
+        std::uint8_t BitsPerPixel() const
         {
             return bitDepth * SubpixelPerPixel();
         }
 
-        std::uint32_t BytesPerPixel() const 
+        std::uint8_t BytesPerPixel() const 
         {
             return std::max(bitDepth / 8, 1) * SubpixelPerPixel();
         }

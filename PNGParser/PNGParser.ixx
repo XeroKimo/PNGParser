@@ -15,6 +15,7 @@ export module PNGParser;
 import :PlatformDetection;
 export import :ChunkParser;
 export import :ChunkData;
+import :PNGFilter0;
 
 export struct Image
 {

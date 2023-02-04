@@ -146,6 +146,7 @@
     <ClCompile Include="ChunkData.ixx" />
     <ClCompile Include="ChunkParser.ixx" />
     <ClCompile Include="PlatformDetection.ixx" />
+    <ClCompile Include="PNGFilter0.ixx" />
     <ClCompile Include="PNGParser.cpp" />
     <ClCompile Include="PNGParser.ixx" />
     <ClCompile Include="Source.cpp" />

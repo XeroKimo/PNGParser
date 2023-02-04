@@ -386,160 +386,26 @@ struct DefilteredImage
     std::vector<Byte> bytes;
 };
 
-class FiltererScanlines
-{
-    std::uint32_t m_bytesPerPixel;
-    std::vector<Byte> m_currentScanline;
-    std::vector<Byte> m_previousScanline;
-
-public:
-    FiltererScanlines(std::uint32_t bytesPerPixel, size_t bufferSize) :
-        m_bytesPerPixel(bytesPerPixel)
-    {
-        m_currentScanline.resize(bufferSize + m_bytesPerPixel);
-        m_previousScanline.resize(bufferSize + m_bytesPerPixel);
-    }
-
-    FiltererScanlines(std::uint32_t bytesPerPixel, std::span<const Byte> startingData) :
-        m_bytesPerPixel(bytesPerPixel)
-    {
-        m_currentScanline.resize(startingData.size() + m_bytesPerPixel);
-        m_previousScanline.resize(startingData.size() + m_bytesPerPixel);
-        SetCurrentScanline(startingData);
-    }
-
-public:
-    void SetCurrentScanline(std::span<const Byte> data) noexcept
-    {
-        assert(data.size() == Size());
-        std::swap(m_previousScanline, m_currentScanline);
-        std::copy(data.begin(), data.end(), m_currentScanline.begin() + m_bytesPerPixel);
-    }
-
-    void CopyCurrentScanline(std::span<Byte> data) const noexcept
-    {
-        assert(data.size() == Size());
-        std::copy(m_currentScanline.begin() + m_bytesPerPixel, m_currentScanline.end(), data.begin());
-    }
-
-    size_t Size() const noexcept
-    {
-        return m_currentScanline.size() - m_bytesPerPixel;
-    }
-
-public:
-    Byte& X(size_t index) noexcept
-    {
-        return m_currentScanline[index + m_bytesPerPixel];
-    }
-    Byte& A(size_t index) noexcept
-    {
-        return m_currentScanline[index];
-    }
-    Byte& B(size_t index) noexcept
-    {
-        return m_previousScanline[index + m_bytesPerPixel];
-    }
-    Byte& C(size_t index) noexcept
-    {
-        return m_previousScanline[index];
-    }
-
-    const Byte& X(size_t index) const noexcept
-    {
-        return m_currentScanline[index + m_bytesPerPixel];
-    }
-    const Byte& A(size_t index) const noexcept
-    {
-        return m_currentScanline[index];
-    }
-    const Byte& B(size_t index) const noexcept
-    {
-        return m_previousScanline[index + m_bytesPerPixel];
-    }
-    const Byte& C(size_t index) const noexcept
-    {
-        return m_previousScanline[index];
-    }
-};
-
-
-void NoFilter(FiltererScanlines& scanlines) noexcept
-{
-}
-
-void SubFilter(FiltererScanlines& scanlines) noexcept
-{
-    for(size_t i = 0; i < scanlines.Size(); i++)
-    {
-        Byte x = scanlines.X(i);
-        Byte a = scanlines.A(i);
-
-        scanlines.X(i) = x + a;
-    }
-}
-void UpFilter(FiltererScanlines& scanlines) noexcept
-{
-    for(size_t i = 0; i < scanlines.Size(); i++)
-    {
-        Byte x = scanlines.X(i);
-        Byte b = scanlines.B(i);
-
-        scanlines.X(i) = x + b;
-    }
-}
-void AverageFilter(FiltererScanlines& scanlines) noexcept
-{
-    for(size_t i = 0; i < scanlines.Size(); i++)
-    {
-        Byte x = scanlines.X(i);
-        Byte a = scanlines.A(i);
-        Byte b = scanlines.B(i);
-
-        scanlines.X(i) = x + (a + b) / 2;
-    }
-}
-void PaethFilter(FiltererScanlines& scanlines) noexcept
-{
-    for(size_t i = 0; i < scanlines.Size(); i++)
-    {
-        Byte x = scanlines.X(i);
-        Byte a = scanlines.A(i);
-        Byte b = scanlines.B(i);
-        Byte c = scanlines.C(i);
-
-        scanlines.X(i) = x + PaethPredictor(a, b, c);
-    }
-}
 
 class ImageDefilterer
 {
 private:
     std::vector<Byte> m_imageBytes;
 
-    static constexpr std::array<decltype(&NoFilter), 5> defilterFunctions
-    {
-        &NoFilter,
-        &SubFilter,
-        &UpFilter,
-        &AverageFilter,
-        &PaethFilter
-    };
+
 public:
     ImageDefilterer(FilteredReducedImageView reducedImage)
     {
         m_imageBytes.resize(reducedImage.ImageSize());
 
-
-        FiltererScanlines scanlines{ reducedImage.header->BytesPerPixel(), reducedImage.ScanlineSize() };
+        ScanlineFilterer scanlines{ reducedImage.header->BytesPerPixel(), reducedImage.ScanlineSize(), reducedImage.ScanlineSize() };
         for(size_t i = 0; i < reducedImage.height; i++)
         {
             auto filterByte = reducedImage.FilterByte(i);
             auto scanlineData = reducedImage.GetScanline(i);
+            auto imageScanline = std::span<Byte>(m_imageBytes.data() + reducedImage.ScanlineSize() * i, reducedImage.ScanlineSize());
 
-            scanlines.SetCurrentScanline(scanlineData.GetData());
-            defilterFunctions[filterByte](scanlines);
-            scanlines.CopyCurrentScanline(std::span<Byte>(m_imageBytes.data() + reducedImage.ScanlineSize() * i, reducedImage.ScanlineSize()));
+            scanlines.ApplyFilter(scanlineData.GetData(), defilterFunctions[filterByte], imageScanline);
         }
     }
 
