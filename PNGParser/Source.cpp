@@ -10,7 +10,7 @@
 
 import PNGParser;
 
-#undef main;
+#undef main
 
 void TestImageParser()
 {
@@ -34,7 +34,7 @@ int main()
     //TestImageParser();
     std::fstream image{ "Test Images/basi6a08.png", std::ios::binary | std::ios::in };
 
-    Image im;
+    Image2 im;
     if(image.is_open())
     {
         auto timePoint = std::chrono::steady_clock::now();

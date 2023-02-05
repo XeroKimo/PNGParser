@@ -16,8 +16,9 @@ import :PlatformDetection;
 export import :ChunkParser;
 export import :ChunkData;
 import :PNGFilter0;
+import :Image;
 
-export struct Image
+export struct Image2
 {
     int width;
     int height;
@@ -26,5 +27,5 @@ export struct Image
     int bitDepth;
 };
 
-export Image ParsePNG(std::istream& stream);
+export Image2 ParsePNG(std::istream& stream);
 

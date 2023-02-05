@@ -11,50 +11,52 @@ import :PlatformDetection;
 
 template<class BinaryOp>
     requires std::is_invocable_r_v<Byte, BinaryOp, Byte, Byte>
-Byte NoFilter(Byte x, Byte a, Byte b, Byte c)
+constexpr Byte NoFilter(Byte x, Byte a, Byte b, Byte c)
 {
     return x;
 }
 
 template<class BinaryOp>
     requires std::is_invocable_r_v<Byte, BinaryOp, Byte, Byte>
-Byte SubFilter(Byte x, Byte a, Byte b, Byte c)
+constexpr Byte SubFilter(Byte x, Byte a, Byte b, Byte c)
 {
     return BinaryOp{}(x, a);
 }
 
 template<class BinaryOp>
     requires std::is_invocable_r_v<Byte, BinaryOp, Byte, Byte>
-Byte UpFilter(Byte x, Byte a, Byte b, Byte c)
+constexpr Byte UpFilter(Byte x, Byte a, Byte b, Byte c)
 {
     return BinaryOp{}(x, b);
 }
 
 template<class BinaryOp>
     requires std::is_invocable_r_v<Byte, BinaryOp, Byte, Byte>
-Byte AverageFilter(Byte x, Byte a, Byte b, Byte c)
+constexpr Byte AverageFilter(Byte x, Byte a, Byte b, Byte c)
 {
     return BinaryOp{}(x, (a + b) / 2);
 }
 
-Byte PaethPredictor(Byte a, Byte b, Byte c)
+constexpr Byte PaethPredictor(std::int16_t a, std::int16_t b, std::int16_t c)
 {
-    std::uint16_t p = a + b - c;
-    Byte pa = static_cast<Byte>(std::abs(p - a));
-    Byte pb = static_cast<Byte>(std::abs(p - b));
-    Byte pc = static_cast<Byte>(std::abs(p - c));
+    auto abs = [](std::int16_t v) { return (v > 0) ? v : -v; };
+
+    std::int16_t p = a + b - c;
+    std::int16_t pa = abs(p - a);
+    std::int16_t pb = abs(p - b);
+    std::int16_t pc = abs(p - c);
 
     if(pa <= pb && pa <= pc)
-        return a;
+        return static_cast<Byte>(a);
     else if(pb <= pc)
-        return b;
+        return static_cast<Byte>(b);
     else
-        return c;
+        return static_cast<Byte>(c);
 }
 
 template<class BinaryOp>
     requires std::is_invocable_r_v<Byte, BinaryOp, Byte, Byte>
-Byte PaethFilter(Byte x, Byte a, Byte b, Byte c)
+constexpr Byte PaethFilter(Byte x, Byte a, Byte b, Byte c)
 {
     return BinaryOp{}(x, PaethPredictor(a, b, c));
 }
@@ -63,7 +65,7 @@ using FilterFunctionSignature = decltype(&NoFilter<std::plus<Byte>>);
 
 constexpr size_t numFilterFunctions = 5;
 
-constexpr std::array<FilterFunctionSignature, numFilterFunctions> defilterFunctions
+std::array<FilterFunctionSignature, numFilterFunctions> defilterFunctions
 {
     NoFilter<std::plus<Byte>>,
     SubFilter<std::plus<Byte>>,
@@ -72,7 +74,7 @@ constexpr std::array<FilterFunctionSignature, numFilterFunctions> defilterFuncti
     PaethFilter<std::plus<Byte>>,
 };
 
-constexpr std::array<FilterFunctionSignature, numFilterFunctions> filterFunctions
+std::array<FilterFunctionSignature, numFilterFunctions> filterFunctions
 {
     NoFilter<std::minus<Byte>>,
     SubFilter<std::minus<Byte>>,
@@ -180,7 +182,7 @@ private:
         return std::span(m_previousScanline.begin(), m_imagePitch);
     }
 
-    Byte& X(size_t i)
+    Byte& X(size_t i) noexcept
     {
         return XBytes()[i];
     }
