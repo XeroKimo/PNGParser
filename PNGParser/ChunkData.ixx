@@ -151,15 +151,6 @@ enum class InterlaceMethod : std::uint8_t
     Adam7 = 1
 };
 
-namespace Adam7
-{
-    inline constexpr size_t passCount = 7;
-    inline constexpr std::array<std::int32_t, passCount> startingRow = { 0, 0, 4, 0, 2, 0, 1 };
-    inline constexpr std::array<std::int32_t, passCount> startingCol = { 0, 4, 0, 2, 0, 1, 0 };
-    inline constexpr std::array<std::int32_t, passCount> rowIncrement = { 8, 8, 8, 4, 4, 2, 2 };
-    inline constexpr std::array<std::int32_t, passCount> columnIncrement = { 8, 8, 4, 4, 2, 2, 1 };
-}
-
 template<>
 struct ChunkTraits<"IHDR">
 {
@@ -170,17 +161,15 @@ struct ChunkTraits<"IHDR">
 
     struct Data
     {
-        static constexpr std::uint32_t filterByteCount = 1;
-
-        std::uint32_t width;
-        std::uint32_t height;
+        std::int32_t width;
+        std::int32_t height;
         std::int8_t bitDepth;
         ColorType colorType;
         std::int8_t compressionMethod;
         std::int8_t filterMethod;
         InterlaceMethod interlaceMethod;
 
-        std::uint32_t SubpixelPerPixel() const
+        std::int8_t SubpixelPerPixel() const
         {
             using enum ColorType;
             switch(colorType)
@@ -200,116 +189,42 @@ struct ChunkTraits<"IHDR">
             throw std::exception("Unexpected pixel type");
         }
 
-        std::uint8_t BitsPerPixel() const
+        std::int8_t BitsPerPixel() const
         {
             return bitDepth * SubpixelPerPixel();
         }
 
-        std::uint8_t BytesPerPixel() const 
+        std::int8_t BytesPerPixel() const 
         {
-            return std::max(bitDepth / 8, 1) * SubpixelPerPixel();
+            return bitDepth / 8 * SubpixelPerPixel();
         }
 
-        std::uint32_t FilteredScanlineSize() const
+        std::int8_t PixelsPerByte() const 
         {
-            return filterByteCount + ScanlineSize();
+            return 8 / bitDepth * SubpixelPerPixel();
         }
 
-        std::uint32_t FilteredImageSize() const
+        std::size_t ScanlineSize() const
         {
-            if(interlaceMethod == InterlaceMethod::None)
-                return FilteredScanlineSize() * height;
-            else
-            {
-                std::uint32_t size = 0;
-                for(size_t i = 0; i < Adam7::columnIncrement.size(); i++)
-                {
-                    size += Adam7FilteredImageSize(i);
-                }
-                return size;
-            }
+            return (bitDepth >= 8) ? (width * BytesPerPixel()) : (width / PixelsPerByte() + (width % PixelsPerByte() > 0));
         }
 
-        std::uint32_t FilterByte(std::size_t scanline) const
-        {
-            return FilteredScanlineSize() * scanline;
-        }
-
-        std::span<Byte> ScanlineSubspanNoFilterByte(std::span<Byte> decompressedImageData, std::size_t scanline) const
-        {
-            return decompressedImageData.subspan(FilteredScanlineSize() * scanline + 1, ScanlineSize());
-        }
-
-        std::uint32_t ScanlineSize() const
-        {
-            return (width * BytesPerPixel());
-        }
-
-        std::uint32_t ImageSize() const
+        std::size_t ImageSize() const
         {
             return (ScanlineSize() * height);
-        }
-
-        std::uint32_t Adam7ReducedWidth(size_t index) const
-        {
-            assert(index < Adam7::passCount);
-            return width / Adam7::columnIncrement[index] * static_cast<std::uint32_t>(Adam7ReducedImageExists(index));
-        }
-
-        std::uint32_t Adam7ReducedHeight(size_t index) const
-        {
-            assert(index < Adam7::passCount);
-            return height / Adam7::rowIncrement[index] * static_cast<std::uint32_t>(Adam7ReducedImageExists(index));
-        }
-
-        std::uint32_t Adam7FilteredScanlineSize(size_t index) const
-        {
-            assert(index < Adam7::passCount);
-            return (Adam7ReducedWidth(index) * BytesPerPixel()) + filterByteCount;
-        }
-
-        std::uint32_t Adam7FilteredImageSize(size_t index) const
-        {
-            assert(index < Adam7::passCount);
-            return (Adam7FilteredScanlineSize(index) * Adam7ReducedHeight(index));
-        }
-
-        std::uint32_t Adam7ScanlineSize(size_t index) const
-        {
-            assert(index < Adam7::passCount);
-            return (Adam7ReducedWidth(index) * BytesPerPixel());
-        }
-
-        std::uint32_t Adam7ImageSize(size_t index) const
-        {
-            assert(index < Adam7::passCount);
-            return (Adam7ScanlineSize(index) * Adam7ReducedHeight(index));
-        }
-
-        bool Adam7ReducedImageExists(size_t index) const
-        {
-            assert(index < Adam7::passCount);
-            return width > Adam7::startingCol[index] && height > Adam7::startingRow[index];
-        }
-
-        std::span<Byte> Adam7ReducedImageSpan(std::span<Byte> decompressedImageData, size_t index) const
-        {
-            assert(index < Adam7::passCount);
-            size_t offset = 0;
-            for(size_t i = 1; i <= index; i++)
-                offset += Adam7FilteredImageSize(i - 1);
-            return decompressedImageData.subspan(offset, Adam7FilteredImageSize(index));
-        }
-
-        std::uint32_t Adam7DeinterlacedPixelIndex(std::uint32_t x, std::uint32_t y, std::uint32_t reducedWidth, size_t pass) const
-        {
-            std::uint32_t yStart = (Adam7::startingRow[pass] * width * y + Adam7::rowIncrement[pass] * Adam7::columnIncrement[pass] * y) * BytesPerPixel();
-            std::uint32_t xStart = (Adam7::startingCol[pass] + Adam7::columnIncrement[pass] * x) * BytesPerPixel();
-            return xStart + yStart;
         }
     };
 
     static constexpr size_t maxSize = 13;
+
+    static void VerifyParsedData(const Data& data)
+    {
+        //data.SubpixelPerPixel();
+        if(!(data.bitDepth == 1 || data.bitDepth == 2 || data.bitDepth == 4 || data.bitDepth == 8 || data.bitDepth == 16))
+        {
+            throw std::exception("Unexpected bit depth");
+        }
+    }
 
     static Data Parse(ChunkDataInputStream& stream)
     {
@@ -325,6 +240,8 @@ struct ChunkTraits<"IHDR">
         data.compressionMethod = stream.Read<std::int8_t>();
         data.filterMethod = stream.Read<std::int8_t>();
         data.interlaceMethod = stream.Read<InterlaceMethod>();
+
+        VerifyParsedData(data);
 
         return data;
     }
