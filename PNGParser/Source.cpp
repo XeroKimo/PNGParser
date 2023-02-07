@@ -54,7 +54,7 @@ void OutputTest(std::string file)
     SDL_Event e;
 
     
-    SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(im.imageBytes.data(), im.width, im.height, im.bitDepth, im.pitch, 0x00'00'00'ff, 0x00'00'ff'00, 0x00'ff'00'00, 0x00'00'00'00);
+    SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(im.imageBytes.data(), im.width, im.height, im.bitDepth, im.pitch, 0x00'00'00'ff, 0x00'00'ff'00, 0x00'ff'00'00, 0xff'00'00'00);
     er = SDL_GetError();
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
 
@@ -77,6 +77,6 @@ void OutputTest(std::string file)
 int main()
 {
     //TestImageParser();
-    OutputTest("Test Images/basn0g01.png");
+    OutputTest("Test Images/basi6a08.png");
     return 0;
 }

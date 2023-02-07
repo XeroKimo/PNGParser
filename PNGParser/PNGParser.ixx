@@ -81,71 +81,28 @@ template<std::unsigned_integral ByteTy>
     requires (sizeof(ByteTy) == 1)
 struct Scanline
 {
-    std::uint8_t bitDepth;
-    std::uint8_t subpixelCount;
+    PixelInfo pixelInfo;
     std::uint32_t width;
     std::span<ByteTy> bytes;
 
-    Scanline(std::uint8_t bitDepth, std::uint8_t subpixelCount, std::uint32_t width, std::span<ByteTy> bytes) :
-        bitDepth(bitDepth),
-        subpixelCount(subpixelCount),
+    Scanline(PixelInfo pixelInfo, std::uint32_t width, std::span<ByteTy> bytes) :
+        pixelInfo(pixelInfo),
         width(width),
         bytes(bytes)
     {
 
     }
 
-    static Scanline FromImage(std::span<ByteTy> imageBytes, std::uint32_t width, std::uint32_t pitch, std::uint8_t bitDepth, std::uint8_t subpixelCount, size_t scanlineIndex)
+    static Scanline FromImage(std::span<ByteTy> imageBytes, ImageInfo info, size_t scanlineIndex)
     {
-        if(bitDepth < 8)
-        {
-            const std::uint32_t bitsPerPixel = bitDepth * subpixelCount;
-            const std::uint32_t pixelsPerByte = 8 / bitsPerPixel;
-            const size_t realScanlineIndex = scanlineIndex / pixelsPerByte;
-            const std::uint32_t scanlinePitch = std::max<std::uint32_t>(pitch / pixelsPerByte, 1);
-            const std::uint32_t scanlineWidth = std::max<std::uint32_t>(width / pixelsPerByte, 1);
-            std::span scanline = imageBytes.subspan(realScanlineIndex * scanlinePitch, scanlineWidth);
-            return Scanline(bitDepth, subpixelCount, width, scanline);
-        }
-        else
-        {
-            const std::uint32_t bytesPerPixel = std::max(bitDepth / 8, 1) * subpixelCount;
-            const std::uint32_t scanlinePitch = pitch * bytesPerPixel;
-            const std::uint32_t scanlineWidth = width * bytesPerPixel;
-            std::span scanline = imageBytes.subspan(scanlineIndex * scanlinePitch, scanlineWidth);
-            return Scanline(bitDepth, subpixelCount, width, scanline);
-        }
+        std::span scanline = imageBytes.subspan(scanlineIndex * info.ScanlineSize(), info.ScanlineSize());
+        return Scanline(info.pixelInfo, info.width, scanline);
     }
 
-    static std::pair<Scanline, Byte> FromFilteredImage(std::span<ByteTy> imageBytes, std::uint32_t width, std::uint32_t pitch, std::uint8_t bitDepth, std::uint8_t subpixelCount, size_t scanlineIndex)
+    static std::pair<Scanline, Byte> FromFilteredImage(std::span<ByteTy> imageBytes, ImageInfo info, size_t scanlineIndex)
     {
-        if(bitDepth < 8)
-        {
-            const std::uint32_t bitsPerPixel = bitDepth * subpixelCount;
-            const std::uint32_t pixelsPerByte = 8 / bitsPerPixel;
-            const size_t realScanlineIndex = scanlineIndex / pixelsPerByte;
-
-            const std::uint32_t scanlinePitch = std::max<std::uint32_t>(pitch / pixelsPerByte, 1);
-            const std::uint32_t filteredScanlinePitch = scanlinePitch + Filter0::filterByteCount;
-
-            const std::uint32_t scanlineWidth = std::max<std::uint32_t>(width / pixelsPerByte, 1);
-            const std::uint32_t filteredScanlineWidth = scanlineWidth + Filter0::filterByteCount;
-            std::span scanline = imageBytes.subspan(realScanlineIndex * filteredScanlinePitch, filteredScanlineWidth);
-
-            return { Scanline(bitDepth, subpixelCount, width, scanline.subspan(1, scanlineWidth)), scanline[0] };
-        }
-        else
-        {
-            const std::uint32_t bytesPerPixel = std::max(bitDepth / 8, 1) * subpixelCount;
-            const std::uint32_t scanlinePitch = pitch * bytesPerPixel;
-            const std::uint32_t filteredScanlinePitch = scanlinePitch + Filter0::filterByteCount;
-
-            const std::uint32_t scanlineWidth = width * bytesPerPixel;
-            const std::uint32_t filteredScanlineWidth = scanlineWidth + Filter0::filterByteCount;
-            std::span scanline = imageBytes.subspan(scanlineIndex * filteredScanlinePitch, filteredScanlineWidth);
-
-            return { Scanline(bitDepth, subpixelCount, width, scanline.subspan(1, scanlineWidth)), scanline[0] };
-        }
+        std::span scanline = imageBytes.subspan(scanlineIndex * Filter0::ScanlineSize(info.ScanlineSize()), Filter0::ScanlineSize(info.ScanlineSize()));
+        return { Scanline(info.pixelInfo, info.width, scanline.subspan(Filter0::filterByteCount, info.ScanlineSize())), scanline[0] };
     }
 
 public:
@@ -161,17 +118,17 @@ public:
 
     Byte GetByte(size_t i) const
     {
-        if(bitDepth < 8)
+        if(pixelInfo.bitDepth < 8)
         {
-            const size_t subpixelPerByte = 8 / bitDepth;
+            const size_t subpixelPerByte = pixelInfo.SubpixelPerByte();
             const size_t index = i / subpixelPerByte;
-            const Byte shift = static_cast<Byte>(i % subpixelPerByte);
+            const Byte shift = static_cast<Byte>(i % subpixelPerByte) * pixelInfo.BitsPerPixel();
             const Byte bitMask = [this](std::uint8_t shift)
             {
                 Byte bitMask = 0;
-                if(bitDepth == 1)
+                if(pixelInfo.bitDepth == 1)
                     bitMask |= 0b1000'0000;
-                else if(bitDepth == 2)
+                else if(pixelInfo.bitDepth == 2)
                     bitMask |= 0b1100'0000;
                 else
                     bitMask |= 0b1111'0000;
@@ -179,7 +136,7 @@ public:
                 return bitMask >> shift;
             }(shift);
 
-            return (bytes[index] & bitMask) >> (7 - shift);
+            return (bytes[index] & bitMask) >> (8 - pixelInfo.BitsPerPixel() - shift);
         }
         else
         {
@@ -189,33 +146,33 @@ public:
 
     std::span<ByteTy> GetPixel(size_t i) noexcept
     {
-        assert(bitDepth >= 8);
+        assert(pixelInfo.bitDepth >= 8);
         return bytes.subspan(i * BytesPerPixel(), BytesPerPixel());
     }
 
     std::span<const ByteTy> GetPixel(size_t i) const noexcept
     {
-        assert(bitDepth >= 8);
+        assert(pixelInfo.bitDepth >= 8);
         return bytes.subspan(i * BytesPerPixel(), BytesPerPixel());
     }
 
 public:
     std::uint8_t BitsPerPixel() const noexcept
     {
-        return bitDepth * subpixelCount;
+        return pixelInfo.BitsPerPixel();
     }
 
     std::uint8_t BytesPerPixel() const noexcept
     {
-        return std::max(1, bitDepth / 8) * subpixelCount;
+        return pixelInfo.BytesPerPixel();
     }
 
     std::uint8_t PixelsPerByte() const noexcept
     {
-        return 8 / BitsPerPixel();
+        return pixelInfo.PixelsPerByte();
     }
 
-    operator Scanline<const ByteTy>() const noexcept { return Scanline<const ByteTy>(bitDepth, subpixelCount, width, bytes); }
+    operator Scanline<const ByteTy>() const noexcept { return Scanline<const ByteTy>(pixelInfo, width, bytes); }
 };
 
 template<FilterState Filter>
@@ -235,7 +192,7 @@ struct Image : FilterInfo<Filter>
 
     std::size_t ImageSize() const noexcept
     {
-        return bytes.size();
+        return imageInfo.ImageSize();
     }
 
     std::uint8_t BytesPerPixel() const noexcept
@@ -250,12 +207,12 @@ struct Image : FilterInfo<Filter>
 
     Scanline<Byte> GetScanline(size_t scanline)
     {
-        return Scanline<Byte>::FromImage(bytes, imageInfo.width, imageInfo.width, imageInfo.pixelInfo.bitDepth, imageInfo.pixelInfo.subpixelCount, scanline);
+        return Scanline<Byte>::FromImage(bytes, imageInfo, scanline);
     }
 
     Scanline<const Byte> GetScanline(size_t scanline) const
     {
-        return Scanline<const Byte>::FromImage(bytes, imageInfo.width, imageInfo.width, imageInfo.pixelInfo.bitDepth, imageInfo.pixelInfo.subpixelCount, scanline);
+        return Scanline<const Byte>::FromImage(bytes, imageInfo, scanline);
     }
 
     std::span<Byte> GetPixel(std::uint32_t i)
@@ -266,7 +223,7 @@ struct Image : FilterInfo<Filter>
 
 void ExplodeScanline(Scanline<const Byte> bitScanline, Scanline<Byte> byteScanline)
 {
-    if(bitScanline.BytesPerPixel() != byteScanline.BytesPerPixel())
+    if(bitScanline.pixelInfo.ExplodedPixelFormat().BytesPerPixel() != byteScanline.BytesPerPixel())
         throw std::exception("Format incompatible");
 
     if(bitScanline.width < byteScanline.width)

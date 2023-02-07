@@ -35,6 +35,11 @@ struct PixelInfo
     {
         return (8 / bitDepth);
     }
+
+    PixelInfo ExplodedPixelFormat() const noexcept
+    {
+        return { (bitDepth < 8) ? std::int8_t{ 8 } : bitDepth, subpixelCount };
+    }
 };
 
 struct ImageInfo
@@ -51,7 +56,12 @@ struct ImageInfo
         }
         else
         {
-            return width / pixelInfo.PixelsPerByte();
+            return width / pixelInfo.PixelsPerByte() + (width % pixelInfo.PixelsPerByte() > 0);
         }
+    }
+
+    std::size_t ImageSize() const noexcept
+    {
+        return ScanlineSize() * height;
     }
 };
