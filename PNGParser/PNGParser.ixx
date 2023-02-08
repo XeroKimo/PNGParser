@@ -41,7 +41,7 @@ std::size_t DecompressedImageSize(const ChunkData<"IHDR">& header)
             return Filter0::ImageSize(header.height, header.ScanlineSize());
         case InterlaceMethod::Adam7:
         {
-            Adam7::ImageInfos infos = Adam7::ImageInfos(ImageInfo{ { header.bitDepth, header.SubpixelPerPixel() }, header.width, header.height });
+            Adam7::ImageInfos infos = Adam7::ImageInfos(ImageInfo{ { header.bitDepth, header.SubpixelCount() }, header.width, header.height });
             size_t size = 0;
             for(size_t i = 0; i < Adam7::passCount; i++)
             {

@@ -149,6 +149,7 @@
     <ClCompile Include="Adam7.ixx" />
     <ClCompile Include="ChunkData.ixx" />
     <ClCompile Include="ChunkParser.ixx" />
+    <ClCompile Include="ColorTypeDescription.ixx" />
     <ClCompile Include="Image.ixx" />
     <ClCompile Include="PlatformDetection.ixx" />
     <ClCompile Include="PNGFilter0.ixx" />

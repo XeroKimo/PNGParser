@@ -41,7 +41,7 @@ void OutputTest(std::string file)
         auto timePoint = std::chrono::steady_clock::now();
         im = ParsePNG(image);
         auto end = std::chrono::steady_clock::now();
-        std::cout << "Time taken to parse: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - timePoint);
+        std::cout << "Time taken to parse: " << std::chrono::duration_cast<std::chrono::nanoseconds>(end - timePoint);
 
     }
 
@@ -77,6 +77,6 @@ void OutputTest(std::string file)
 int main()
 {
     //TestImageParser();
-    OutputTest("Test Images/basi6a08.png");
+    OutputTest("Test Images/basn3p08.png");
     return 0;
 }

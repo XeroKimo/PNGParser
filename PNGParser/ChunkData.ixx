@@ -11,11 +11,13 @@ module;
 #include <array>
 #include <istream>
 #include <cassert>
+#include <algorithm>
 
 export module PNGParser:ChunkData;
 import :ChunkParser;
 import :PlatformDetection;
 import :Image;
+import :ColorTypeDescription;
 
 constexpr bool IsUppercase(Byte b)
 {
@@ -136,14 +138,6 @@ struct ChunkTraits;
 export template<ChunkType Ty>
 using ChunkData = ChunkTraits<Ty>::Data;
 
-enum class ColorType : std::uint8_t
-{
-    GreyScale = 0,
-    TrueColor = 2,
-    IndexedColor = 3,
-    GreyscaleWithAlpha = 4,
-    TruecolorWithAlpha = 6
-};
 
 enum class InterlaceMethod : std::uint8_t
 {
@@ -169,49 +163,45 @@ struct ChunkTraits<"IHDR">
         std::int8_t filterMethod;
         InterlaceMethod interlaceMethod;
 
-        std::int8_t SubpixelPerPixel() const
+        std::int8_t SubpixelCount() const
         {
-            using enum ColorType;
-            switch(colorType)
+            for(const ColorFormatView& format : standardColorFormats)
             {
-            case GreyScale:
-                return 1;
-            case TrueColor:
-                return 3;
-            case IndexedColor:
-                return 1;
-            case GreyscaleWithAlpha:
-                return 2;
-            case TruecolorWithAlpha:
-                return 4;
+                if(colorType == format.type)
+                    return format.subpixelCount;
             }
 
             throw std::exception("Unexpected pixel type");
         }
 
+        ImageInfo ToImageInfo() const
+        {
+            return { PixelInfo(bitDepth, SubpixelCount()), width, height };
+        }
+
         std::int8_t BitsPerPixel() const
         {
-            return bitDepth * SubpixelPerPixel();
+            return ToImageInfo().pixelInfo.BitsPerPixel();
         }
 
         std::int8_t BytesPerPixel() const 
         {
-            return bitDepth / 8 * SubpixelPerPixel();
+            return ToImageInfo().pixelInfo.BytesPerPixel();
         }
 
         std::int8_t PixelsPerByte() const 
         {
-            return 8 / bitDepth * SubpixelPerPixel();
+            return ToImageInfo().pixelInfo.PixelsPerByte();
         }
 
         std::size_t ScanlineSize() const
         {
-            return (bitDepth >= 8) ? (width * BytesPerPixel()) : (width / PixelsPerByte() + (width % PixelsPerByte() > 0));
+            return ToImageInfo().ScanlineSize();
         }
 
         std::size_t ImageSize() const
         {
-            return (ScanlineSize() * height);
+            return ToImageInfo().ImageSize();
         }
     };
 
@@ -219,10 +209,16 @@ struct ChunkTraits<"IHDR">
 
     static void VerifyParsedData(const Data& data)
     {
-        //data.SubpixelPerPixel();
-        if(!(data.bitDepth == 1 || data.bitDepth == 2 || data.bitDepth == 4 || data.bitDepth == 8 || data.bitDepth == 16))
+        auto it = std::find_if(standardColorFormats.begin(), standardColorFormats.end(), [data](const ColorFormatView& format) { return format.type == data.colorType; });
+        
+        if(it == standardColorFormats.end())
+            throw std::runtime_error("Unexpected color type: " + std::to_string(static_cast<int>(data.colorType)));
+        
+        auto matchBitdepth = [data](int bitDepth) { return data.bitDepth == bitDepth; };
+
+        if(std::none_of(it->allowBitDepths.begin(), it->allowBitDepths.end(), matchBitdepth))
         {
-            throw std::exception("Unexpected bit depth");
+            throw std::runtime_error("Unsupported bit depth color type: " + std::string(it->name) + " bitDepth: " + std::to_string(static_cast<int>(data.colorType)));
         }
     }
 
@@ -233,16 +229,78 @@ struct ChunkTraits<"IHDR">
 
         Data data;
 
-        data.width = stream.Read<std::uint32_t>();
-        data.height = stream.Read<std::uint32_t>();
-        data.bitDepth = stream.Read<std::int8_t>();
-        data.colorType = stream.Read<ColorType>();
-        data.compressionMethod = stream.Read<std::int8_t>();
-        data.filterMethod = stream.Read<std::int8_t>();
-        data.interlaceMethod = stream.Read<InterlaceMethod>();
+        data.width = stream.ReadNative<std::uint32_t>();
+        data.height = stream.ReadNative<std::uint32_t>();
+        data.bitDepth = stream.ReadNative<std::int8_t>();
+        data.colorType = stream.ReadNative<ColorType>();
+        data.compressionMethod = stream.ReadNative<std::int8_t>();
+        data.filterMethod = stream.ReadNative<std::int8_t>();
+        data.interlaceMethod = stream.ReadNative<InterlaceMethod>();
 
         VerifyParsedData(data);
 
+        return data;
+    }
+};
+
+template<>
+struct ChunkTraits<"PLTE">
+{
+    static constexpr ChunkType identifier = "PLTE";
+    static constexpr std::string_view name = "Palette";
+    static constexpr bool is_optional = false;
+    static constexpr bool multiple_allowed = false;
+
+    static constexpr std::size_t maxEntries = 256;
+
+    struct Data
+    {
+        using ColorEntry = std::array<std::uint8_t, 3>;
+        std::array<ColorEntry, maxEntries> colorPalette;
+    };
+
+    static Data Parse(ChunkDataInputStream& stream)
+    {
+        if(stream.ChunkSize() % 3 > 0)
+            throw std::runtime_error("Palette chunk has unexpected size");
+
+        Data data;
+        for(size_t i = 0; i < maxEntries && stream.HasUnreadData(); i++)
+        {
+            data.colorPalette[i] = stream.Read<3>();
+        }
+        return data;
+    }
+};
+
+template<>
+struct ChunkTraits<"IDAT">
+{
+    static constexpr ChunkType identifier = "IDAT";
+    static constexpr std::string_view name = "Image Data";
+    static constexpr bool is_optional = false;
+    static constexpr bool multiple_allowed = true;
+
+    struct Data
+    {
+        std::vector<Byte> bytes;
+    };
+
+    static constexpr size_t maxSize = std::numeric_limits<int>::max() - 1;
+
+    static constexpr size_t maxSlidingWindowSize = 32768;
+
+    static Data Parse(ChunkDataInputStream& stream)
+    {
+        if(stream.ChunkSize() > maxSize)
+            throw std::runtime_error("Data chunk max size exceeds the standard supported max size");
+
+        Data data;
+        data.bytes.reserve(stream.ChunkSize());
+        while(stream.HasUnreadData())
+        {
+            data.bytes.push_back(stream.ReadNative<1>()[0]);
+        }
         return data;
     }
 };
@@ -270,7 +328,7 @@ struct ChunkTraits<"gAMA">
 
         Data data;
 
-        data.gamma = stream.Read<std::uint32_t>();
+        data.gamma = stream.ReadNative<std::uint32_t>();
 
         return data;
     }
@@ -298,37 +356,8 @@ struct ChunkTraits<"sRGB">
 
         Data data;
 
-        data.renderingIntent = stream.Read<Byte >();
+        data.renderingIntent = stream.ReadNative<Byte >();
 
-        return data;
-    }
-};
-
-template<>
-struct ChunkTraits<"IDAT">
-{
-    static constexpr ChunkType identifier = "IDAT";
-    static constexpr std::string_view name = "Image Data";
-    static constexpr bool is_optional = false;
-    static constexpr bool multiple_allowed = true;
-
-    struct Data
-    {
-        std::vector<Byte> bytes;
-    };
-
-    static constexpr size_t maxSize = sizeof(Data);
-
-    static constexpr size_t maxSlidingWindowSize = 32768;
-
-    static Data Parse(ChunkDataInputStream& stream)
-    {
-        Data data;
-        data.bytes.reserve(stream.ChunkSize());
-        while(stream.HasUnreadData())
-        {
-            data.bytes.push_back(stream.Read<1>()[0]);
-        }
         return data;
     }
 };

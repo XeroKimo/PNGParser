@@ -116,7 +116,10 @@ using ChunkContainer = ChunkContainerImpl<Ty, ChunkTraits<Ty>::is_optional, Chun
 
 using StandardChunks = std::tuple<
     ChunkContainer<"IHDR">,
-    ChunkContainer<"IDAT">>;
+    ChunkContainer<"PLTE">,
+    ChunkContainer<"IDAT">,
+    ChunkContainer<"gAMA">,
+    ChunkContainer<"sRGB">>;
 
 struct DecodedChunks
 {
@@ -210,8 +213,17 @@ private:
         case "IHDR"_ct:
             ParseChunkData<"IHDR">(chunkStream);
             break;
+        case "PLTE"_ct:
+            ParseChunkData<"PLTE">(chunkStream);
+            break;
         case "IDAT"_ct:
             ParseChunkData<"IDAT">(chunkStream);
+            break;
+        case "gAMA"_ct:
+            ParseChunkData<"gAMA">(chunkStream);
+            break;
+        case "sRGB"_ct:
+            ParseChunkData<"sRGB">(chunkStream);
             break;
         case "IEND"_ct:
             break;
@@ -500,11 +512,11 @@ ReducedImages GetReducedImages(std::vector<Byte> decompressedImage, const ChunkD
         reducedImage.imageInfo.width = headerChunk.width;
         reducedImage.imageInfo.height = headerChunk.height;
         reducedImage.imageInfo.pixelInfo.bitDepth = headerChunk.bitDepth;
-        reducedImage.imageInfo.pixelInfo.subpixelCount = headerChunk.SubpixelPerPixel();
+        reducedImage.imageInfo.pixelInfo.subpixelCount = headerChunk.SubpixelCount();
         reducedImage.bytes.resize(headerChunk.ImageSize());
         reducedImage.filterBytes.resize(headerChunk.height);
 
-        ImageInfo headerInfo{ PixelInfo { headerChunk.bitDepth, headerChunk.SubpixelPerPixel() }, headerChunk.width, headerChunk.height };
+        ImageInfo headerInfo{ PixelInfo { headerChunk.bitDepth, headerChunk.SubpixelCount() }, headerChunk.width, headerChunk.height };
         for(std::uint32_t i = 0; i < reducedImage.filterBytes.size(); i++)
         {
 
@@ -520,7 +532,7 @@ ReducedImages GetReducedImages(std::vector<Byte> decompressedImage, const ChunkD
     case InterlaceMethod::Adam7:
     {
         size_t imageOffset = 0;
-        Adam7::ImageInfos imageInfos{ ImageInfo{ { headerChunk.bitDepth, headerChunk.SubpixelPerPixel() }, headerChunk.width, headerChunk.height } };
+        Adam7::ImageInfos imageInfos{ ImageInfo{ { headerChunk.bitDepth, headerChunk.SubpixelCount() }, headerChunk.width, headerChunk.height } };
         for(size_t i = 0; i < 7; i++)
         {
             ReducedImages::value_type  reducedImage;
@@ -589,13 +601,54 @@ ExplodedImages ExplodeImages(ReducedImages images, const ChunkData<"IHDR">& head
     return explodedImages;
 }
 
-DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"> header)
+DeinterlacedImage ConvertTo8BitDepth(DeinterlacedImage image, ChunkData<"IHDR"> header)
 {
-    if(header.bitDepth >= 8)
+    if(header.bitDepth > 8)
     {
-        switch(header.colorType)
+        DeinterlacedImage copy = image;
+        image.imageInfo.pixelInfo.bitDepth = 8;
+        image.bytes.resize(image.ImageSize());
+        for(size_t i = 0, j = 0; i < copy.bytes.size(); i += 2, j++)
         {
-        case ColorType::GreyScale:
+            Bytes<2> initialPixel = [&]() -> Bytes<2>
+            {
+                if constexpr(SwapByteOrder)
+                {
+                    return { copy.bytes[i + 1], copy.bytes[i] };
+                }
+                else
+                {
+                    return { copy.bytes[i], copy.bytes[i + 1] };
+                }
+            }();
+            std::uint32_t product = std::bit_cast<std::uint16_t>(initialPixel) * std::numeric_limits<std::uint8_t>::max();
+            std::uint32_t finalColor = product / std::numeric_limits<std::uint16_t>::max();
+
+            image.bytes[j] = static_cast<Byte>(finalColor);
+        }
+    }
+
+    return image;
+}
+
+DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"> header, const ChunkData<"PLTE">& palette)
+{
+    if(header.colorType == ColorType::IndexedColor)
+    {
+        DeinterlacedImage copy = image;
+        image.imageInfo.pixelInfo.subpixelCount = 4;
+        image.bytes.resize(image.ImageSize());
+
+        for(size_t i = 0, j = 0; i < copy.bytes.size(); i ++, j += 4)
+        {
+            std::span<const Byte, 3> paletteColor = palette.colorPalette[copy.bytes[i]];
+            std::copy(paletteColor.begin(), paletteColor.end(), image.bytes.begin() + j);
+            image.bytes[j + 3] = 255;
+        }
+    }
+    else if(header.colorType == ColorType::GreyScale)
+    {
+        if(header.bitDepth >= 8)
         {
             DeinterlacedImage copy = image;
             image.imageInfo.pixelInfo.subpixelCount = 4;
@@ -608,15 +661,7 @@ DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"> header)
                 }
             }
         }
-        break;
-        }
-        return image;
-    }
-    else
-    {
-        switch(header.colorType)
-        {
-        case ColorType::GreyScale:
+        else
         {
             DeinterlacedImage copy = image;
             image.imageInfo.pixelInfo.subpixelCount = 4;
@@ -630,13 +675,8 @@ DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"> header)
                 }
             }
         }
-            break;
-        case ColorType::IndexedColor:
-            break;
-        }
-
-        return image;
     }
+    return image;
 }
 
 Image2 ParsePNG(std::istream& stream)
@@ -649,7 +689,8 @@ Image2 ParsePNG(std::istream& stream)
     ExplodedImages explodedImages = ExplodeImages(std::move(view), chunks.Get<"IHDR">());
     DefilteredImages defilteredImages = DefilterImage(std::move(explodedImages), chunks.Get<"IHDR">());
     DeinterlacedImage deinterlacedImage = DeinterlaceImage(std::move(defilteredImages), chunks.Get<"IHDR">());
-    deinterlacedImage = ColorImage(std::move(deinterlacedImage), chunks.Get<"IHDR">());
+    deinterlacedImage = ConvertTo8BitDepth(std::move(deinterlacedImage), chunks.Get<"IHDR">());
+    deinterlacedImage = ColorImage(std::move(deinterlacedImage), chunks.Get<"IHDR">(), chunks.Get<"PLTE">());
     Image2 i;
     i.width = deinterlacedImage.imageInfo.width;
     i.height = deinterlacedImage.imageInfo.height;

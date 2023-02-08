@@ -79,6 +79,26 @@ public:
 public:
     template<class Ty>
         requires std::integral<Ty> || std::floating_point<Ty> || std::is_enum_v<Ty>
+    Ty ReadNative()
+    {
+        return std::bit_cast<Ty>(ReadNative<sizeof(Ty)>());
+    }
+
+    template<size_t Count>
+    Bytes<Count> ReadNative()
+    {
+        std::uint32_t bytesRead = m_bytesRead + Count;
+
+        if(bytesRead > m_chunkSize)
+            throw std::out_of_range("Reading memory outside of range");
+
+        m_bytesRead = bytesRead;
+
+        return ReadNativeBytes<Count>(*m_stream);
+    }
+
+    template<class Ty>
+        requires std::integral<Ty> || std::floating_point<Ty> || std::is_enum_v<Ty>
     Ty Read()
     {
         return std::bit_cast<Ty>(Read<sizeof(Ty)>());
@@ -94,7 +114,7 @@ public:
 
         m_bytesRead = bytesRead;
 
-        return ReadNativeBytes<Count>(*m_stream);
+        return ReadBytes<Count>(*m_stream);
     }
 
     bool HasUnreadData() const noexcept { return m_bytesRead < m_chunkSize; }
