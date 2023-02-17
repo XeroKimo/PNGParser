@@ -77,6 +77,6 @@ void OutputTest(std::string file)
 int main()
 {
     //TestImageParser();
-    OutputTest("Test Images/basn3p08.png");
+    OutputTest("Test Images/basi6a16.png");
     return 0;
 }

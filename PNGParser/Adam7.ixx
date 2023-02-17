@@ -41,7 +41,6 @@ namespace Adam7::Internal
 
 namespace Adam7
 {
-
     struct ImageInfos
     {
         std::array<std::int32_t, passCount> widths;
@@ -91,6 +90,11 @@ namespace Adam7
             }
         }
 
+        ImageInfo ToImageInfo(size_t passIndex) const
+        {
+            return ImageInfo{ pixelInfo, widths[passIndex], heights[passIndex] };
+        }
+
         std::size_t ImageSize(size_t passIndex) const
         {
             return scanlineSizes[passIndex] * heights[passIndex];
@@ -106,10 +110,4 @@ namespace Adam7
             return size;
         }
     };
-
-    //struct ImageViews
-    //{
-    //    ImageInfos info;
-    //    std::array<std::span<Byte>, passCount> reducedImages;
-    //};
 }

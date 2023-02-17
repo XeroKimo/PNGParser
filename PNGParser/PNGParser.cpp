@@ -14,6 +14,7 @@ module;
 #include <optional>
 #include <numeric>
 #include <limits>
+#include <variant>
 
 module PNGParser;
 
@@ -83,60 +84,6 @@ void VerifySignature(std::istream& stream)
         throw std::exception("PNG signature could not be matched");
     }
 }
-
-template<ChunkType Ty, bool Optional, bool Multiple>
-struct ChunkContainerImpl;
-
-template<ChunkType Ty>
-struct ChunkContainerImpl<Ty, false, false>
-{
-    using type = ChunkTraits<Ty>::Data;
-};
-
-template<ChunkType Ty>
-struct ChunkContainerImpl<Ty, false, true>
-{
-    using type = std::vector<typename ChunkTraits<Ty>::Data>;
-};
-
-template<ChunkType Ty>
-struct ChunkContainerImpl<Ty, true, false>
-{
-    using type = std::optional<typename ChunkTraits<Ty>::Data>;
-};
-
-template<ChunkType Ty>
-struct ChunkContainerImpl<Ty, true, true>
-{
-    using type = std::vector<typename ChunkTraits<Ty>::Data>;
-};
-
-template<ChunkType Ty>
-using ChunkContainer = ChunkContainerImpl<Ty, ChunkTraits<Ty>::is_optional, ChunkTraits<Ty>::multiple_allowed>::type;
-
-using StandardChunks = std::tuple<
-    ChunkContainer<"IHDR">,
-    ChunkContainer<"PLTE">,
-    ChunkContainer<"IDAT">,
-    ChunkContainer<"gAMA">,
-    ChunkContainer<"sRGB">>;
-
-struct DecodedChunks
-{
-    StandardChunks standardChunks;
-
-    template<ChunkType Ty>
-    ChunkContainer<Ty>& Get() noexcept
-    {
-        return std::get<ChunkContainer<Ty>>(standardChunks);
-    }
-
-    template<ChunkType Ty>
-    const ChunkContainer<Ty>& Get() const noexcept
-    {
-        return std::get<ChunkContainer<Ty>>(standardChunks);
-    }
-};
 
 
 class ChunkDecoder
@@ -219,13 +166,49 @@ private:
         case "IDAT"_ct:
             ParseChunkData<"IDAT">(chunkStream);
             break;
+        case "IEND"_ct:
+            break;
+        case "cHRM"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
+            break;
         case "gAMA"_ct:
             ParseChunkData<"gAMA">(chunkStream);
+            break;
+        case "iCCP"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
+            break;
+        case "sBIT"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
             break;
         case "sRGB"_ct:
             ParseChunkData<"sRGB">(chunkStream);
             break;
-        case "IEND"_ct:
+        case "bKGD"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
+            break;
+        case "hIST"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
+            break;
+        case "tRNS"_ct:
+            ParseChunkData<"tRNS">(chunkStream);
+            break;
+        case "pHYs"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
+            break;
+        case "sPLT"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
+            break;
+        case "tIME"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
+            break;
+        case "iTXt"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
+            break;
+        case "tEXt"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
+            break;
+        case "zTXt"_ct:
+            chunkStream.Skip(chunkStream.UnreadSize());
             break;
         default:
             throw UnknownChunkError{ type };
@@ -243,11 +226,11 @@ private:
     {
         if constexpr(ChunkTraits<Ty>::multiple_allowed)
         {
-            m_chunks.Get<Ty>().push_back(ChunkTraits<Ty>::Parse(stream));
+            m_chunks.Get<Ty>().push_back(ChunkTraits<Ty>::Parse(stream, m_chunks));
         }
         else
         {
-            m_chunks.Get<Ty>() = ChunkTraits<Ty>::Parse(stream);
+            m_chunks.Get<Ty>() = ChunkTraits<Ty>::Parse(stream, m_chunks);
         }
     }
 
@@ -347,7 +330,6 @@ std::vector<Byte> ConcatDataChunks(std::span<const ChunkData<"IDAT">> dataChunks
     return dataBytes;
 }
 
-/*std::vector<Byte>*/
 std::vector<Byte> DecompressImage(std::vector<Byte> dataBytes, const ChunkData<"IHDR">& headerData)
 {
     z_stream zstream = {};
@@ -385,54 +367,11 @@ std::vector<Byte> DecompressImage(std::vector<Byte> dataBytes, const ChunkData<"
     return decompressedImage;
 }
 
-using ReducedImages =       std::vector<Image<FilterState::Filtered, InterlaceState::Interlaced>>;
-using ExplodedImages =      std::vector<Image<FilterState::Filtered, InterlaceState::Interlaced>>;
-using DefilteredImages =    std::vector<Image<FilterState::Defiltered, InterlaceState::Interlaced>>;
-using DeinterlacedImage =   Image<FilterState::Defiltered, InterlaceState::Deinterlaced>;
-
-class ImageDefilterer
-{
-private:
-    std::vector<Byte> m_imageBytes;
-
-
-public:
-    ImageDefilterer(ExplodedImages::value_type reducedImage)
-    {
-        m_imageBytes.resize(reducedImage.ImageSize());
-
-        Filter0::ScanlineFilterer scanlines{ reducedImage.BytesPerPixel(), reducedImage.ScanlineSize(), reducedImage.ScanlineSize() };
-        for(size_t i = 0; i < reducedImage.imageInfo.height; i++)
-        {
-            auto filterByte = reducedImage.filterBytes[i];
-            auto scanlineData = reducedImage.GetScanline(i);
-            auto imageScanline = Scanline<Byte>::FromImage(m_imageBytes, reducedImage.imageInfo, i);
-
-            scanlines.ApplyFilter(scanlineData.bytes, Filter0::defilterFunctions[filterByte], imageScanline.bytes);
-        }
-    }
-
-    std::vector<Byte> Get()&
-    {
-        return m_imageBytes;
-    }
-
-    std::vector<Byte> Get() const&
-    {
-        return m_imageBytes;
-    }
-
-    std::vector<Byte> Get()&&
-    {
-        return std::move(m_imageBytes);
-    }
-
-    std::vector<Byte> Get() const&&
-    {
-        return m_imageBytes;
-    }
-
-};
+//TODO: Add strong type def of Image
+using ReducedImages = std::vector<Filter0::Image>;
+using ExplodedImages = std::vector<Filter0::Image>;
+using DefilteredImages = std::vector<Image>;
+using DeinterlacedImage = Image;
 
 DeinterlacedImage DeinterlaceImage(DefilteredImages reducedImages, ChunkData<"IHDR"> header)
 {
@@ -440,21 +379,12 @@ DeinterlacedImage DeinterlaceImage(DefilteredImages reducedImages, ChunkData<"IH
     {
     case InterlaceMethod::None:
     {
-        DeinterlacedImage deinterlacedImage;
-
-        deinterlacedImage.imageInfo = reducedImages[0].imageInfo;
-        deinterlacedImage.bytes = std::move(reducedImages[0].bytes);
-
-        return deinterlacedImage;
+        return { std::move(reducedImages[0]) };
     }
-        break;
+    break;
     case InterlaceMethod::Adam7:
     {
-        DeinterlacedImage deinterlacedImage;
-        deinterlacedImage.imageInfo.pixelInfo = reducedImages[0].imageInfo.pixelInfo;
-        deinterlacedImage.imageInfo.width = header.width;
-        deinterlacedImage.imageInfo.height = header.height;
-        deinterlacedImage.bytes.resize(deinterlacedImage.ImageSize());
+        DeinterlacedImage deinterlacedImage{ {reducedImages[0].imageInfo.pixelInfo, header.width, header.height } };
 
         for(size_t i = 0; i < reducedImages.size(); i++)
         {
@@ -474,9 +404,9 @@ DeinterlacedImage DeinterlaceImage(DefilteredImages reducedImages, ChunkData<"IH
 
         return deinterlacedImage;
     }
-        break;
+    break;
     }
-    
+
     throw std::exception("Unknown interlace method");
 }
 
@@ -486,12 +416,21 @@ DefilteredImages DefilterImage(ExplodedImages filteredImages, const ChunkData<"I
     switch(headerChunk.filterMethod)
     {
     case 0:
-        for(const auto& i : filteredImages)
+        for(const auto& image : filteredImages)
         {
-            DefilteredImages::value_type image;
-            image.imageInfo = i.imageInfo;
-            image.bytes = std::move(ImageDefilterer(i).Get());
-            images.push_back(std::move(image));
+            Image defilteredImage{ image.image };
+
+            Filter0::ScanlineFilterer scanlines{ image.image.BytesPerPixel(), image.image.ScanlineSize() };
+            for(size_t i = 0; i < image.image.Height(); i++)
+            {
+                auto filterByte = image.filterBytes[i];
+                auto filteredScanline = image.image.GetScanline(i);
+                auto unfilteredScanline = defilteredImage.GetScanline(i);
+
+                scanlines.ApplyFilter(filteredScanline.bytes, Filter0::defilterFunctions[filterByte], unfilteredScanline.bytes);
+            }
+
+            images.push_back(std::move(defilteredImage));
         }
         return images;
         break;
@@ -507,21 +446,14 @@ ReducedImages GetReducedImages(std::vector<Byte> decompressedImage, const ChunkD
     {
     case InterlaceMethod::None:
     {
-        ReducedImages::value_type reducedImage;
-
-        reducedImage.imageInfo.width = headerChunk.width;
-        reducedImage.imageInfo.height = headerChunk.height;
-        reducedImage.imageInfo.pixelInfo.bitDepth = headerChunk.bitDepth;
-        reducedImage.imageInfo.pixelInfo.subpixelCount = headerChunk.SubpixelCount();
-        reducedImage.bytes.resize(headerChunk.ImageSize());
+        ReducedImages::value_type reducedImage{ { headerChunk.ToImageInfo() } };
         reducedImage.filterBytes.resize(headerChunk.height);
 
-        ImageInfo headerInfo{ PixelInfo { headerChunk.bitDepth, headerChunk.SubpixelCount() }, headerChunk.width, headerChunk.height };
         for(std::uint32_t i = 0; i < reducedImage.filterBytes.size(); i++)
         {
 
-            auto writeScanline = Scanline<Byte>::FromImage(reducedImage.bytes, headerInfo, i);
-            auto readScanline = Scanline<const Byte>::FromFilteredImage(decompressedImage, headerInfo, i);
+            auto writeScanline = Scanline<Byte>::FromImage(reducedImage.image.bytes, reducedImage.image.imageInfo, i);
+            auto readScanline = Filter0::Scanline<const Byte>(decompressedImage, reducedImage.image.imageInfo, i);
             std::copy(readScanline.first.bytes.begin(), readScanline.first.bytes.end(), writeScanline.bytes.begin());
             reducedImage.filterBytes[i] = readScanline.second;
         }
@@ -532,24 +464,19 @@ ReducedImages GetReducedImages(std::vector<Byte> decompressedImage, const ChunkD
     case InterlaceMethod::Adam7:
     {
         size_t imageOffset = 0;
-        Adam7::ImageInfos imageInfos{ ImageInfo{ { headerChunk.bitDepth, headerChunk.SubpixelCount() }, headerChunk.width, headerChunk.height } };
+        Adam7::ImageInfos imageInfos{ headerChunk.ToImageInfo() };
         for(size_t i = 0; i < 7; i++)
         {
-            ReducedImages::value_type  reducedImage;
-
-            reducedImage.imageInfo.width = imageInfos.widths[i];
-            reducedImage.imageInfo.height = imageInfos.heights[i];
-            reducedImage.imageInfo.pixelInfo = imageInfos.pixelInfo;
-            reducedImage.bytes.resize(imageInfos.ImageSize(i));
+            ReducedImages::value_type reducedImage{ imageInfos.ToImageInfo(i) };
             reducedImage.filterBytes.resize(imageInfos.heights[i]);
 
-            std::span reducedImageView = std::span(decompressedImage).subspan(imageOffset, Filter0::ImageSize(imageInfos.heights[i], imageInfos.scanlineSizes[i]));
+            std::span reducedImageView = std::span(decompressedImage).subspan(imageOffset, Filter0::ImageSize(imageInfos.ToImageInfo(i)));
             imageOffset += reducedImageView.size();
 
-            for(std::int32_t j = 0; j < reducedImage.imageInfo.height; j++)
+            for(std::int32_t j = 0; j < reducedImage.image.imageInfo.height; j++)
             {
-                auto writeScanline = Scanline<Byte>::FromImage(reducedImage.bytes, reducedImage.imageInfo, j);
-                auto readScanline = Scanline<const Byte>::FromFilteredImage(reducedImageView, reducedImage.imageInfo, j);
+                auto writeScanline = Scanline<Byte>::FromImage(reducedImage.image.bytes, reducedImage.image.imageInfo, j);
+                auto readScanline = Filter0::Scanline(reducedImageView, reducedImage.image.imageInfo, j);
                 std::copy(readScanline.first.bytes.begin(), readScanline.first.bytes.end(), writeScanline.bytes.begin());
                 reducedImage.filterBytes[j] = readScanline.second;
             }
@@ -569,28 +496,21 @@ ExplodedImages ExplodeImages(ReducedImages images, const ChunkData<"IHDR">& head
     {
         for(auto& image : images)
         {
-            ExplodedImages::value_type i;
-            i.imageInfo = image.imageInfo;
-            i.bytes = std::move(image.bytes);
-            i.filterBytes = std::move(image.filterBytes);
-
-            explodedImages.push_back(i);
+            explodedImages.push_back(std::move(image));
         }
     }
     else
     {
         for(auto& image : images)
         {
-            ExplodedImages::value_type i;
-            i.imageInfo = image.imageInfo;
-            i.imageInfo.pixelInfo.bitDepth = 8;
-            i.filterBytes = std::move(image.filterBytes);
+            ExplodedImages::value_type i{ std::move(image.image.imageInfo), std::move(image.filterBytes) };
+            i.image.imageInfo.pixelInfo.bitDepth = 8;
 
-            i.bytes.resize(i.imageInfo.width * i.imageInfo.height * i.BytesPerPixel());
+            i.image.bytes.resize(i.image.imageInfo.width * i.image.imageInfo.height * i.image.BytesPerPixel());
 
-            for(std::int32_t j = 0; j < i.imageInfo.height; j++)
+            for(std::int32_t j = 0; j < i.image.imageInfo.height; j++)
             {
-                ExplodeScanline(image.GetScanline(j), i.GetScanline(j));
+                ExplodeScanline(image.image.GetScanline(j), i.image.GetScanline(j));
             }
 
 
@@ -639,7 +559,7 @@ DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"> header, 
         image.imageInfo.pixelInfo.subpixelCount = 4;
         image.bytes.resize(image.ImageSize());
 
-        for(size_t i = 0, j = 0; i < copy.bytes.size(); i ++, j += 4)
+        for(size_t i = 0, j = 0; i < copy.bytes.size(); i++, j += 4)
         {
             std::span<const Byte, 3> paletteColor = palette.colorPalette[copy.bytes[i]];
             std::copy(paletteColor.begin(), paletteColor.end(), image.bytes.begin() + j);
@@ -655,10 +575,11 @@ DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"> header, 
             image.bytes.resize(image.ImageSize());
             for(size_t i = 0, j = 0; i < copy.bytes.size(); i++)
             {
-                for(size_t k = 0; k < 4; j++, k++)
+                for(size_t k = 0; k < 3; j++, k++)
                 {
                     image.bytes[j] = copy.bytes[i];
                 }
+                image.bytes[j++] = 255;
             }
         }
         else
@@ -669,10 +590,28 @@ DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"> header, 
             Byte colorIncrements = std::numeric_limits<Byte>::max() / (std::pow(2, header.bitDepth) - 1);
             for(size_t i = 0, j = 0; i < copy.bytes.size(); i++)
             {
-                for(size_t k = 0; k < 4; j++, k++)
+                for(size_t k = 0; k < 3; j++, k++)
                 {
                     image.bytes[j] = copy.bytes[i] * colorIncrements;
                 }
+                image.bytes[j++] = 255;
+            }
+        }
+    }
+    else if(header.colorType == ColorType::GreyscaleWithAlpha)
+    {
+        if(header.bitDepth >= 8)
+        {
+            DeinterlacedImage copy = image;
+            image.imageInfo.pixelInfo.subpixelCount = 4;
+            image.bytes.resize(image.ImageSize());
+            for(size_t i = 0, j = 0; i < copy.bytes.size(); i += 2)
+            {
+                for(size_t k = 0; k < 3; j++, k++)
+                {
+                    image.bytes[j] = copy.bytes[i];
+                }
+                image.bytes[j++] = copy.bytes[i + 1];
             }
         }
     }
@@ -692,10 +631,10 @@ Image2 ParsePNG(std::istream& stream)
     deinterlacedImage = ConvertTo8BitDepth(std::move(deinterlacedImage), chunks.Get<"IHDR">());
     deinterlacedImage = ColorImage(std::move(deinterlacedImage), chunks.Get<"IHDR">(), chunks.Get<"PLTE">());
     Image2 i;
-    i.width = deinterlacedImage.imageInfo.width;
-    i.height = deinterlacedImage.imageInfo.height;
+    i.width = deinterlacedImage.Width();
+    i.height = deinterlacedImage.Height();
     i.imageBytes = std::move(deinterlacedImage.bytes);
     i.pitch = deinterlacedImage.ScanlineSize();
-    i.bitDepth = deinterlacedImage.imageInfo.pixelInfo.bitDepth * deinterlacedImage.BytesPerPixel();
+    i.bitDepth = deinterlacedImage.BitsPerPixel();
     return i;
 }

@@ -12,6 +12,7 @@ module;
 #include <istream>
 #include <cassert>
 #include <algorithm>
+#include <optional>
 
 export module PNGParser:ChunkData;
 import :ChunkParser;
@@ -129,6 +130,28 @@ constexpr ChunkType operator""_ct(const char* string, size_t n)
     return ChunkType(constString);
 }
 
+namespace ChunkIdentifiers
+{
+    constexpr ChunkType header = "IHDR";
+    constexpr ChunkType palette = "PLTE";
+    constexpr ChunkType imageData = "IDAT";
+    constexpr ChunkType imageTrailer = "IEND";
+    constexpr ChunkType transparency = "tRNS";
+    constexpr ChunkType chromaticities = "cHRM";
+    constexpr ChunkType imageGamma = "gAMA";
+    constexpr ChunkType iccProfile = "iCCP";
+    constexpr ChunkType significantBits = "sBIT";
+    constexpr ChunkType rgbColorSpace = "sRGB";
+    constexpr ChunkType texturalData = "tEXt";
+    constexpr ChunkType compressedTextualData = "zTXt";
+    constexpr ChunkType internationalTextualData = "iTXt";
+    constexpr ChunkType backgroundColor = "bKGD";
+    constexpr ChunkType imageHistogram = "hIST";
+    constexpr ChunkType physicalPixelDimensions = "pHYs";
+    constexpr ChunkType suggestedPalette = "sPLT";
+    constexpr ChunkType lastModificationTime = "tIME";
+}
+
 export template<ChunkType Ty>
 struct ChunkTraits;
 
@@ -138,6 +161,34 @@ struct ChunkTraits;
 export template<ChunkType Ty>
 using ChunkData = ChunkTraits<Ty>::Data;
 
+template<ChunkType Ty, bool Optional, bool Multiple>
+struct ChunkContainerImpl;
+
+template<ChunkType Ty>
+struct ChunkContainerImpl<Ty, false, false>
+{
+    using type = ChunkTraits<Ty>::Data;
+};
+
+template<ChunkType Ty>
+struct ChunkContainerImpl<Ty, false, true>
+{
+    using type = std::vector<typename ChunkTraits<Ty>::Data>;
+};
+
+template<ChunkType Ty>
+struct ChunkContainerImpl<Ty, true, false>
+{
+    using type = std::optional<typename ChunkTraits<Ty>::Data>;
+};
+
+template<ChunkType Ty>
+struct ChunkContainerImpl<Ty, true, true>
+{
+    using type = std::vector<typename ChunkTraits<Ty>::Data>;
+};
+
+struct DecodedChunks;
 
 enum class InterlaceMethod : std::uint8_t
 {
@@ -222,7 +273,7 @@ struct ChunkTraits<"IHDR">
         }
     }
 
-    static Data Parse(ChunkDataInputStream& stream)
+    static Data Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() != maxSize)
             throw std::runtime_error(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
@@ -259,7 +310,7 @@ struct ChunkTraits<"PLTE">
         std::array<ColorEntry, maxEntries> colorPalette;
     };
 
-    static Data Parse(ChunkDataInputStream& stream)
+    static Data Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() % 3 > 0)
             throw std::runtime_error("Palette chunk has unexpected size");
@@ -290,7 +341,7 @@ struct ChunkTraits<"IDAT">
 
     static constexpr size_t maxSlidingWindowSize = 32768;
 
-    static Data Parse(ChunkDataInputStream& stream)
+    static Data Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() > maxSize)
             throw std::runtime_error("Data chunk max size exceeds the standard supported max size");
@@ -302,6 +353,56 @@ struct ChunkTraits<"IDAT">
             data.bytes.push_back(stream.ReadNative<1>()[0]);
         }
         return data;
+    }
+};
+
+template<>
+struct ChunkTraits<"IEND">
+{
+    static constexpr ChunkType identifier = "IEND";
+    static constexpr std::string_view name = "Image Trailer";
+    static constexpr bool is_optional = false;
+    static constexpr bool multiple_allowed = false;
+
+    struct Data
+    {
+    };
+
+    static constexpr size_t maxSize = 0;
+
+    static Data Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
+    {
+        if(stream.ChunkSize() > maxSize)
+            throw std::runtime_error("Data chunk max size exceeds the standard supported max size");
+
+        return {};
+    }
+};
+
+template<>
+struct ChunkTraits<"tRNS">
+{
+    static constexpr ChunkType identifier = "tRNS";
+    static constexpr std::string_view name = "Transparency";
+    static constexpr bool is_optional = true;
+    static constexpr bool multiple_allowed = false;
+
+    struct Data
+    {
+        std::vector<Byte> alphaValues;
+    };
+
+
+
+    static Data Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
+    {
+        Data data;
+        data.alphaValues.reserve(stream.ChunkSize());
+        while(stream.HasUnreadData())
+        {
+            data.alphaValues.push_back(stream.Read<1>()[0]);
+        }
+        return {};
     }
 };
 
@@ -321,7 +422,7 @@ struct ChunkTraits<"gAMA">
 
     static constexpr size_t maxSize = sizeof(Data);
 
-    static Data Parse(ChunkDataInputStream& stream)
+    static Data Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() != maxSize)
             throw std::runtime_error(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
@@ -349,7 +450,7 @@ struct ChunkTraits<"sRGB">
 
     static constexpr size_t maxSize = sizeof(Data);
 
-    static Data Parse(ChunkDataInputStream& stream)
+    static Data Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() != maxSize)
             throw std::runtime_error(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n");
@@ -359,5 +460,33 @@ struct ChunkTraits<"sRGB">
         data.renderingIntent = stream.ReadNative<Byte >();
 
         return data;
+    }
+};
+
+template<ChunkType Ty>
+using ChunkContainer = ChunkContainerImpl<Ty, ChunkTraits<Ty>::is_optional, ChunkTraits<Ty>::multiple_allowed>::type;
+
+using StandardChunks = std::tuple<
+    ChunkContainer<"IHDR">,
+    ChunkContainer<"PLTE">,
+    ChunkContainer<"IDAT">,
+    ChunkContainer<"tRNS">,
+    ChunkContainer<"gAMA">,
+    ChunkContainer<"sRGB">>;
+
+struct DecodedChunks
+{
+    StandardChunks standardChunks;
+
+    template<ChunkType Ty>
+    ChunkContainer<Ty>& Get() noexcept
+    {
+        return std::get<ChunkContainer<Ty>>(standardChunks);
+    }
+
+    template<ChunkType Ty>
+    const ChunkContainer<Ty>& Get() const noexcept
+    {
+        return std::get<ChunkContainer<Ty>>(standardChunks);
     }
 };
