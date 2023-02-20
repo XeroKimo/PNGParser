@@ -169,46 +169,46 @@ private:
         case "IEND"_ct:
             break;
         case "cHRM"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"cHRM">(chunkStream);
             break;
         case "gAMA"_ct:
             ParseChunkData<"gAMA">(chunkStream);
             break;
         case "iCCP"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"iCCP">(chunkStream);
             break;
         case "sBIT"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"sBIT">(chunkStream);
             break;
         case "sRGB"_ct:
             ParseChunkData<"sRGB">(chunkStream);
             break;
         case "bKGD"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"bKGD">(chunkStream);
             break;
         case "hIST"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"hIST">(chunkStream);
             break;
         case "tRNS"_ct:
             ParseChunkData<"tRNS">(chunkStream);
             break;
         case "pHYs"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"pHYs">(chunkStream);
             break;
         case "sPLT"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"sPLT">(chunkStream);
             break;
         case "tIME"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"tIME">(chunkStream);
             break;
         case "iTXt"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"iTXt">(chunkStream);
             break;
         case "tEXt"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"tEXt">(chunkStream);
             break;
         case "zTXt"_ct:
-            chunkStream.Skip(chunkStream.UnreadSize());
+            ParseChunkData<"zTXt">(chunkStream);
             break;
         default:
             throw UnknownChunkError{ type };

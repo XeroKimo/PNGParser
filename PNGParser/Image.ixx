@@ -90,7 +90,6 @@ struct Scanline
         return Scanline(info.pixelInfo, info.width, scanline);
     }
 
-
 public:
     std::uint32_t TotalWidth() const noexcept
     {
@@ -191,8 +190,8 @@ public:
 
 void ExplodeScanline(Scanline<const Byte> bitScanline, Scanline<Byte> byteScanline)
 {
-    assert(bitScanline.pixelInfo.ExplodedPixelFormat().BytesPerPixel() != byteScanline.BytesPerPixel());
-    assert(bitScanline.width < byteScanline.width);
+    assert(bitScanline.pixelInfo.ExplodedPixelFormat().BytesPerPixel() == byteScanline.BytesPerPixel());
+    assert(bitScanline.width == byteScanline.width);
 
     for (std::uint32_t i = 0; i < byteScanline.width; i++)
     {
