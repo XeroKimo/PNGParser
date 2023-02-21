@@ -4,54 +4,26 @@
 #include <array>
 #include <bit>
 #include <chrono>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h>
 #include <filesystem>
 
 import PNGParser;
 
 #undef main
 
+static constexpr int benchmarkAttempts = 100;
+
 void OutputTest(std::string file)
 {
-
-    std::fstream image{ file, std::ios::binary | std::ios::in };
-
-    Image2 im;
-    if(image.is_open())
+    for(int i = 0; i < benchmarkAttempts; i++)
     {
-        auto timePoint = std::chrono::steady_clock::now();
-        im = ParsePNG(image);
-        auto end = std::chrono::steady_clock::now();
-        std::cout << "Time taken to parse: " << std::chrono::duration_cast<std::chrono::nanoseconds>(end - timePoint);
+        std::fstream image{ file, std::ios::binary | std::ios::in };
 
-    }
-
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
-    SDL_Window* window;
-    SDL_Renderer* renderer;
-    SDL_CreateWindowAndRenderer(800, 600, SDL_WindowFlags::SDL_WINDOW_OPENGL, &window, &renderer);
-
-    auto er = SDL_GetError();
-    SDL_Event e;
-
-    
-    SDL_Surface* surface = SDL_CreateRGBSurfaceFrom(im.imageBytes.data(), im.width, im.height, im.bitDepth, im.pitch, 0x00'00'00'ff, 0x00'00'ff'00, 0x00'ff'00'00, 0xff'00'00'00);
-    er = SDL_GetError();
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-
-    while(true)
-    {
-        if(SDL_PollEvent(&e))
+        if(image.is_open())
         {
-            if(e.type == SDL_QUIT)
-                break;
-        }
-        else
-        {
-            SDL_RenderClear(renderer);
-            SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-            SDL_RenderPresent(renderer);
+            auto timePoint = std::chrono::steady_clock::now();
+            ParsePNG(image);
+            auto end = std::chrono::steady_clock::now();
+            std::cout << "Time taken to parse: " << std::chrono::duration_cast<std::chrono::nanoseconds>(end - timePoint) << "\n";
         }
     }
 }
