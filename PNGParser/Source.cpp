@@ -12,24 +12,6 @@ import PNGParser;
 
 #undef main
 
-void TestImageParser()
-{
-    for(auto dir_entry : std::filesystem::directory_iterator("Test Images"))
-    {
-        std::cout << dir_entry.path() << "\n";
-        try
-        {
-             std::fstream image{ dir_entry.path(), std::ios::binary | std::ios::in };
-             ParsePNG(image);
-             std::cout << "\n";
-        }
-        catch(const std::exception& e)
-        {
-            std::cout << "Failed to parse image: " << dir_entry.path() << "\nError: " << e.what() << "\n\n";
-        }
-    }
-}
-
 void OutputTest(std::string file)
 {
 
@@ -76,7 +58,6 @@ void OutputTest(std::string file)
 
 int main()
 {
-    TestImageParser();
-    //OutputTest("Test Images/ps1n0g08.png");
+    OutputTest("Soccer Chess 3.png");
     return 0;
 }
