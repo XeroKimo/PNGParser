@@ -17,12 +17,22 @@ void OutputTest(std::string file)
     for(int i = 0; i < benchmarkAttempts; i++)
     {
         std::fstream image{ file, std::ios::binary | std::ios::in };
-
+        bool suceeded = true;
         if(image.is_open())
         {
             auto timePoint = std::chrono::steady_clock::now();
-            ParsePNG(image);
+            try
+            {
+                ParsePNG(image);
+            }
+            catch(std::exception& e)
+            {
+                suceeded = false;
+            }
             auto end = std::chrono::steady_clock::now();
+
+            if(!suceeded)
+                std::cout << "Error occured. ";
             std::cout << "Time taken to parse: " << std::chrono::duration_cast<std::chrono::nanoseconds>(end - timePoint) << "\n";
         }
     }
