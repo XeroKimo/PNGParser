@@ -3,6 +3,10 @@
 	"version": "0.1",
 	"dependencies": [
 		{
+			"name": "tl-expected",
+			"platform": "windows"
+		},
+		{
 			"name": "zlib",
 			"platform": "windows"
 		}

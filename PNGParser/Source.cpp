@@ -5,6 +5,7 @@
 #include <bit>
 #include <chrono>
 #include <filesystem>
+#include <tl/expected.hpp>
 
 import PNGParser;
 
@@ -21,14 +22,7 @@ void OutputTest(std::string file)
         if(image.is_open())
         {
             auto timePoint = std::chrono::steady_clock::now();
-            try
-            {
-                ParsePNG(image);
-            }
-            catch(std::exception& e)
-            {
-                suceeded = false;
-            }
+            ParsePNG(image).map_error([&suceeded](auto&) { suceeded = false; });
             auto end = std::chrono::steady_clock::now();
 
             if(!suceeded)

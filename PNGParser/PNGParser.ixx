@@ -11,6 +11,8 @@ module;
 #include <vector>
 #include <istream>
 #include <cassert>
+#include <memory>
+#include <tl/expected.hpp>
 
 export module PNGParser;
 import :PlatformDetection;
@@ -29,29 +31,34 @@ export struct Image2
     int bitDepth;
 };
 
-export Image2 ParsePNG(std::istream& stream);
+export AnyError<Image2> ParsePNG(std::istream& stream);
 
-std::size_t DecompressedImageSize(const ChunkData<"IHDR">& header)
+AnyError<std::size_t> DecompressedImageSize(const ChunkData<"IHDR"_ct>& header)
 {
-    auto filter0 = [&header]()
+    auto filter0 = [&header]() -> AnyError<std::size_t>
     {
         switch(header.interlaceMethod)
         {
         case InterlaceMethod::None:
-            return Filter0::ImageSize(header.ToImageInfo());
+        {
+            if(auto imageInfo = header.ToImageInfo(); imageInfo)
+                return Filter0::ImageSize(std::move(imageInfo).value());
+            else
+                return tl::unexpected(std::move(imageInfo).error());
+        }
         case InterlaceMethod::Adam7:
         {
-            Adam7::ImageInfos infos = Adam7::ImageInfos(header.ToImageInfo());
-            size_t size = 0;
-            for(size_t i = 0; i < Adam7::passCount; i++)
+            if(auto imageInfo = header.ToImageInfo(); imageInfo)
             {
-                size += Filter0::ImageSize(infos.ToImageInfo(i));
+                Adam7::ImageInfos infos = Adam7::ImageInfos(std::move(imageInfo).value());
+                return infos.TotalImageSize(Filter0::ImageSize);
             }
-            return size;
+            else
+                return tl::unexpected(std::move(imageInfo).error());
         }
         }
 
-        throw std::exception("Unknown interlace method");
+        return tl::unexpected(std::make_unique<std::exception>("Unknown interlace method"));
     };
 
     switch(header.filterMethod)
@@ -60,5 +67,5 @@ std::size_t DecompressedImageSize(const ChunkData<"IHDR">& header)
         return filter0();
     }
 
-    throw std::exception("Unknown filter type");
+    return tl::unexpected(std::make_unique<std::exception>("Unknown filter type"));
 }

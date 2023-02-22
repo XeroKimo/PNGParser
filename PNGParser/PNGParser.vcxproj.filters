@@ -18,28 +18,31 @@
     <ClCompile Include="Source.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="PNGParser.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="PNGParser.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="ChunkParser.ixx">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="PlatformDetection.ixx">
+    <ClCompile Include="Adam7.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ChunkData.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="PNGFilter0.ixx">
+    <ClCompile Include="ChunkParser.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ColorTypeDescription.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Image.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Adam7.ixx">
+    <ClCompile Include="PlatformDetection.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PNGFilter0.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PNGParser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

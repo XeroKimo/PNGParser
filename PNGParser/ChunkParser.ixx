@@ -3,22 +3,27 @@ module;
 #include <concepts>
 #include <istream>
 #include <array>
+#include <tl/expected.hpp>
 
 export module PNGParser:ChunkParser;
 import :PlatformDetection;
 
 template<size_t Count>
-Bytes<Count> ReadBytes(std::istream& stream)
+AnyError<Bytes<Count>> ReadBytes(std::istream& stream)
 {
     using Byte = Bytes<Count>::value_type;
     Bytes<Count> bytes;
     for(Byte& b : bytes)
         b = static_cast<Byte>(stream.get());
+
+    if(stream.bad())
+        return tl::unexpected(std::make_unique<std::exception>("An error has occured while reading bytes"));
+
     return bytes;
 }
 
 template<size_t Count>
-Bytes<Count> ReadNativeBytes(std::istream& stream)
+AnyError<Bytes<Count>> ReadNativeBytes(std::istream& stream)
 {
     using Byte = Bytes<Count>::value_type;
     Bytes<Count> bytes;
@@ -38,14 +43,20 @@ Bytes<Count> ReadNativeBytes(std::istream& stream)
             b = static_cast<Byte>(stream.get());
     }
 
+    if(stream.bad())
+        return tl::unexpected(std::make_unique<std::exception>("An error has occured while reading bytes"));
+
     return bytes;
 };
 
 template<class Ty>
     requires std::integral<Ty> || std::floating_point<Ty>
-Ty ParseBytes(std::istream& stream)
+AnyError<Ty> ParseBytes(std::istream& stream)
 {
-    return std::bit_cast<Ty>(ReadNativeBytes<sizeof(Ty)>(stream));
+    if(auto value = ReadNativeBytes<sizeof(Ty)>(stream); value)
+        return std::bit_cast<Ty>(std::move(value).value());
+    else
+        return tl::unexpected(std::move(value).error());
 };
 
 export class ChunkDataInputStream
@@ -79,18 +90,22 @@ public:
 public:
     template<class Ty>
         requires std::integral<Ty> || std::floating_point<Ty> || std::is_enum_v<Ty>
-    Ty ReadNative()
+    AnyError<Ty> ReadNative()
     {
-        return std::bit_cast<Ty>(ReadNative<sizeof(Ty)>());
+        if(auto value = ReadNative<sizeof(Ty)>(); value)
+            return std::bit_cast<Ty>(std::move(value).value());
+        else
+            return tl::unexpected(std::move(value).error());
+        //return std::move(ReadNative<sizeof(Ty)>()).and_then([](Bytes<sizeof(Ty)>&& bytes) -> AnyError<Ty> { return std::bit_cast<Ty>(bytes); });
     }
 
     template<size_t Count>
-    Bytes<Count> ReadNative()
+    AnyError<Bytes<Count>> ReadNative()
     {
         std::uint32_t bytesRead = m_bytesRead + Count;
 
         if(bytesRead > m_chunkSize)
-            throw std::out_of_range("Reading memory outside of range");
+            return tl::unexpected(std::make_unique<std::out_of_range>("Reading memory outside of range"));
 
         m_bytesRead = bytesRead;
 
@@ -99,18 +114,22 @@ public:
 
     template<class Ty>
         requires std::integral<Ty> || std::floating_point<Ty> || std::is_enum_v<Ty>
-    Ty Read()
+    AnyError<Ty> Read()
     {
-        return std::bit_cast<Ty>(Read<sizeof(Ty)>());
+        if(auto value = Read<sizeof(Ty)>(); value)
+            return std::bit_cast<Ty>(std::move(value).value());
+        else
+            return tl::unexpected(std::move(value).error());
+        //return std::move(Read<sizeof(Ty)>()).and_then([](Bytes<sizeof(Ty)>&& bytes) { return std::bit_cast<Ty>(bytes); });
     }
 
     template<size_t Count>
-    Bytes<Count> Read()
+    AnyError<Bytes<Count>> Read()
     {
         std::uint32_t bytesRead = m_bytesRead + Count;
 
         if(bytesRead > m_chunkSize)
-            throw std::out_of_range("Reading memory outside of range");
+            return tl::unexpected(std::make_unique<std::out_of_range>("Reading memory outside of range"));
 
         m_bytesRead = bytesRead;
 

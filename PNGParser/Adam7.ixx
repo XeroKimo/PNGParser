@@ -4,6 +4,8 @@ module;
 #include <span>
 #include <cstdint>
 #include <algorithm>
+#include <memory>
+#include <stdexcept>
 
 export module PNGParser:Adam7;
 import :PlatformDetection;
@@ -41,6 +43,11 @@ namespace Adam7::Internal
 
 namespace Adam7
 {
+    size_t NoFilter(ImageInfo info)
+    {
+        return info.ImageSize();
+    }
+
     struct ImageInfos
     {
         std::array<std::int32_t, passCount> widths;
@@ -90,22 +97,28 @@ namespace Adam7
             }
         }
 
-        ImageInfo ToImageInfo(size_t passIndex) const
+        AnyError<ImageInfo> ToImageInfo(size_t passIndex) const
         {
+            if(passIndex > heights.size())
+                return tl::unexpected(std::make_unique<std::out_of_range>("Out of range access"));
+
             return ImageInfo{ pixelInfo, widths[passIndex], heights[passIndex] };
         }
 
-        std::size_t ImageSize(size_t passIndex) const
+        AnyError<std::size_t> ImageSize(size_t passIndex) const
         {
+            if(passIndex > heights.size())
+                return tl::unexpected(std::make_unique<std::out_of_range>("Out of range access"));
             return scanlineSizes[passIndex] * heights[passIndex];
         }
 
-        std::size_t TotalImageSize() const noexcept
+        template<std::invocable<ImageInfo> FilterFn>
+        std::size_t TotalImageSize(FilterFn func = NoFilter) const noexcept
         {
             size_t size = 0;
             for(size_t i = 0; i < passCount; i++)
             {
-                size += ImageSize(i);
+                size += func(std::move(ToImageInfo(i)).value());
             }
             return size;
         }

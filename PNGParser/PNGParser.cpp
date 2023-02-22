@@ -15,6 +15,8 @@ module;
 #include <numeric>
 #include <limits>
 #include <variant>
+#include <tl/expected.hpp>
+#include <memory>
 
 module PNGParser;
 
@@ -76,13 +78,14 @@ public:
     void Disengage() { m_engaged = false; }
 };
 
-void VerifySignature(std::istream& stream)
+tl::expected<void, std::unique_ptr<std::exception>> VerifySignature(std::istream& stream)
 {
     auto signature = ReadBytes<PNGSignature.size()>(stream);
     if(signature != PNGSignature)
     {
-        throw std::exception("PNG signature could not be matched");
+        return tl::unexpected(std::make_unique<std::exception>("PNG signature could not be matched"));
     }
+    return {};
 }
 
 
@@ -94,23 +97,35 @@ private:
     DecodedChunks m_chunks;
     //decltype(&OrderingConstraintSignature) m_parseChunkState = &FirstChunk;
 
+private:
+    ChunkDecoder() = default;
 public:
-    ChunkDecoder(std::istream& stream)
+    static tl::expected<ChunkDecoder, std::unique_ptr<std::exception>> Create(std::istream& stream)
     {
+        ChunkDecoder d;
+
+        auto orderingConstraint = [](ChunkType e) {};
         while(!stream.eof())
         {
-            try
+            auto parsedChunk = d.ParseChunk(stream);
+
+            if(!parsedChunk)
             {
-                //(this->*m_parseChunkState)(stream);
-                ParseChunk(stream, [](ChunkType e) {});
-            }
-            catch(const UnknownChunkError& e)
-            {
-                std::cout << e.what();
+                if(dynamic_cast<UnknownChunkError*>(parsedChunk.error().get()))
+                {
+                    std::cout << parsedChunk.error()->what();
+                }
+                else
+                {
+                    return tl::unexpected(std::move(parsedChunk).error());
+                }
             }
         }
+
+        return d;
     }
 
+public:
     DecodedChunks& Chunks() & noexcept { return m_chunks; }
     const DecodedChunks& Chunks() const& noexcept { return m_chunks; }
     DecodedChunks& Chunks() && noexcept { return m_chunks; }
@@ -119,15 +134,30 @@ public:
 
 
 private:
-    template<std::invocable<ChunkType> OrderingConstraintCheck>
-    ChunkType ParseChunk(std::istream& stream, OrderingConstraintCheck fn)
+    //template<std::invocable<ChunkType> OrderingConstraintCheck>
+    AnyError<ChunkType> ParseChunk(std::istream& stream)
     {
-        std::uint32_t chunkSize = ParseBytes<std::uint32_t>(stream);
-        ChunkType type{ ReadBytes<4>(stream) };
+        std::uint32_t chunkSize;
+        if(auto value = ParseBytes<std::uint32_t>(stream); value)
+            chunkSize = std::move(value).value();
+        else
+            return tl::unexpected(std::move(value).error());
+
+
+        ChunkType type;
+        if(auto value = ReadBytes<4>(stream); value)
+        {
+            if(auto value2 = ChunkType::Create(std::move(value).value()); value2)
+                type = std::move(value2).value();
+            else
+                return tl::unexpected(std::move(value2).error());
+        }
+        else
+            return tl::unexpected(std::move(value).error());
 
         ScopeGuard endChunkCleanUp = [&]
         {
-            if(type == "IEND")
+            if(type == "IEND"_ct)
             {
                 while(!stream.eof())
                 {
@@ -140,98 +170,129 @@ private:
             ParseBytes<std::uint32_t>(stream);
         };
 
-        VisitParseChunkData(stream, chunkSize, type, fn);
-        std::uint32_t crc = ParseBytes<std::uint32_t>(stream);
+        if(auto value = VisitParseChunkData(stream, chunkSize, type); !value)
+            return tl::unexpected(std::move(value).error());
+
+        std::uint32_t crc;
+        if(auto value = ParseBytes<std::uint32_t>(stream); !value)
+            return tl::unexpected(std::move(value).error());
 
         crcCleanUp.Disengage();
 
         return type;
     }
 
-    template<std::invocable<ChunkType> OrderingConstraintCheck>
-    void VisitParseChunkData(std::istream& stream, std::uint32_t chunkSize, ChunkType type, OrderingConstraintCheck fn)
+    //template<std::invocable<ChunkType> OrderingConstraintCheck>
+    AnyError<void> VisitParseChunkData(std::istream& stream, std::uint32_t chunkSize, ChunkType type)
     {
         ChunkDataInputStream chunkStream{ stream, chunkSize };
 
-        fn(type);
+        //fn(type);
 
         switch(type)
         {
-        case "IHDR"_ct:
-            ParseChunkData<"IHDR">(chunkStream);
-            break;
-        case "PLTE"_ct:
-            ParseChunkData<"PLTE">(chunkStream);
-            break;
-        case "IDAT"_ct:
-            ParseChunkData<"IDAT">(chunkStream);
-            break;
-        case "IEND"_ct:
-            break;
-        case "cHRM"_ct:
-            ParseChunkData<"cHRM">(chunkStream);
-            break;
-        case "gAMA"_ct:
-            ParseChunkData<"gAMA">(chunkStream);
-            break;
-        case "iCCP"_ct:
-            ParseChunkData<"iCCP">(chunkStream);
-            break;
-        case "sBIT"_ct:
-            ParseChunkData<"sBIT">(chunkStream);
-            break;
-        case "sRGB"_ct:
-            ParseChunkData<"sRGB">(chunkStream);
-            break;
-        case "bKGD"_ct:
-            ParseChunkData<"bKGD">(chunkStream);
-            break;
-        case "hIST"_ct:
-            ParseChunkData<"hIST">(chunkStream);
-            break;
-        case "tRNS"_ct:
-            ParseChunkData<"tRNS">(chunkStream);
-            break;
-        case "pHYs"_ct:
-            ParseChunkData<"pHYs">(chunkStream);
-            break;
-        case "sPLT"_ct:
-            ParseChunkData<"sPLT">(chunkStream);
-            break;
-        case "tIME"_ct:
-            ParseChunkData<"tIME">(chunkStream);
-            break;
-        case "iTXt"_ct:
-            ParseChunkData<"iTXt">(chunkStream);
-            break;
-        case "tEXt"_ct:
-            ParseChunkData<"tEXt">(chunkStream);
-            break;
-        case "zTXt"_ct:
-            ParseChunkData<"zTXt">(chunkStream);
-            break;
-        default:
-            throw UnknownChunkError{ type };
-            break;
+            case "IHDR"_ct:
+                if(auto value = ParseChunkData<"IHDR"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "PLTE"_ct:
+                if(auto value = ParseChunkData<"PLTE"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "IDAT"_ct:
+                if(auto value = ParseChunkData<"IDAT"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "IEND"_ct:
+                break;
+            case "cHRM"_ct:
+                if(auto value = ParseChunkData<"cHRM"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "gAMA"_ct:
+                if(auto value = ParseChunkData<"gAMA"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "iCCP"_ct:
+                if(auto value = ParseChunkData<"iCCP"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "sBIT"_ct:
+                if(auto value = ParseChunkData<"sBIT"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "sRGB"_ct:
+                if(auto value = ParseChunkData<"sRGB"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "bKGD"_ct:
+                if(auto value = ParseChunkData<"bKGD"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "hIST"_ct:
+                if(auto value = ParseChunkData<"hIST"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "tRNS"_ct:
+                if(auto value = ParseChunkData<"tRNS"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "pHYs"_ct:
+                if(auto value = ParseChunkData<"pHYs"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "sPLT"_ct:
+                if(auto value = ParseChunkData<"sPLT"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "tIME"_ct:
+                if(auto value = ParseChunkData<"tIME"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "iTXt"_ct:
+                if(auto value = ParseChunkData<"iTXt"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "tEXt"_ct:
+                if(auto value = ParseChunkData<"tEXt"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "zTXt"_ct:
+                if(auto value = ParseChunkData<"zTXt"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            default:
+                return tl::unexpected(std::make_unique<UnknownChunkError>(type));
+                break;
         }
 
         if(chunkStream.HasUnreadData())
         {
-            throw std::logic_error("Chunk data has not been fully parsed");
+            return tl::unexpected(std::make_unique<std::logic_error>("Chunk data has not been fully parsed"));
         }
+
+        return {};
     }
 
     template<ChunkType Ty>
-    void ParseChunkData(ChunkDataInputStream& stream)
+    AnyError<void> ParseChunkData(ChunkDataInputStream& stream)
     {
         if constexpr(ChunkTraits<Ty>::multiple_allowed)
         {
-            m_chunks.Get<Ty>().push_back(ChunkTraits<Ty>::Parse(stream, m_chunks));
+            if(auto value = ChunkTraits<Ty>::Parse(stream, m_chunks); value)
+                m_chunks.Get<Ty>().push_back(std::move(value).value());
+            else
+                return tl::unexpected(std::move(value).error());
         }
         else
         {
-            m_chunks.Get<Ty>() = ChunkTraits<Ty>::Parse(stream, m_chunks);
+            if(auto value = ChunkTraits<Ty>::Parse(stream, m_chunks); value)
+                m_chunks.Get<Ty>() = std::move(value).value();
+            else
+                return tl::unexpected(std::move(value).error());
         }
+
+        return {};
     }
 
 //Ordering constraint functions, no clue if it's important
@@ -311,17 +372,17 @@ private:
 //    }
 };
 
-std::vector<Byte> ConcatDataChunks(std::span<const ChunkData<"IDAT">> dataChunks)
+AnyError<std::vector<Byte>> ConcatDataChunks(std::span<const ChunkData<"IDAT"_ct>> dataChunks)
 {
     if(dataChunks.size() == 0)
-        throw std::exception("No data chunks found");
+        tl::unexpected(std::make_unique<std::exception>("No data chunks found"));
     size_t sizeWritten = 0;
-    size_t totalSize = std::accumulate(dataChunks.begin(), dataChunks.end(), size_t(0), [](size_t val, const ChunkData<"IDAT">& d) { return val + d.bytes.size(); });
+    size_t totalSize = std::accumulate(dataChunks.begin(), dataChunks.end(), size_t(0), [](size_t val, const ChunkData<"IDAT"_ct>& d) { return val + d.bytes.size(); });
 
     std::vector<Byte> dataBytes;
     dataBytes.resize(totalSize);
 
-    for(const ChunkData<"IDAT">&data : dataChunks)
+    for(const ChunkData<"IDAT"_ct>&data : dataChunks)
     {
         std::copy(data.bytes.begin(), data.bytes.end(), dataBytes.begin() + sizeWritten);
         sizeWritten += data.bytes.size();
@@ -330,38 +391,45 @@ std::vector<Byte> ConcatDataChunks(std::span<const ChunkData<"IDAT">> dataChunks
     return dataBytes;
 }
 
-std::vector<Byte> DecompressImage(std::vector<Byte> dataBytes, const ChunkData<"IHDR">& headerData)
+AnyError<std::vector<Byte>> DecompressImage(std::vector<Byte> dataBytes, const ChunkData<"IHDR"_ct>& headerData)
 {
     z_stream zstream = {};
     zstream.next_in = dataBytes.data();
     zstream.avail_in = dataBytes.size();
 
     if(inflateInit(&zstream) != Z_OK)
-        throw std::exception("zstream failed to initialize");
+        return tl::unexpected(std::make_unique<std::exception>("zstream failed to initialize"));
 
     ScopeGuard endInflate = [&zstream]
     {
         if(inflateEnd(&zstream) != Z_OK)
         {
-            throw std::exception("unknown error");
+            std::terminate();
         }
     };
 
     std::vector<Byte> decompressedImage;
-    decompressedImage.resize(DecompressedImageSize(headerData));
+    if(auto value = DecompressedImageSize(headerData); value)
+    {
+        decompressedImage.resize(std::move(value).value());
+    }
+    else
+    {
+        return tl::unexpected(std::move(value).error());
+    }
 
     zstream.next_out = &decompressedImage[0];
     zstream.avail_out = decompressedImage.size();
 
     if(auto cont = inflate(&zstream, Z_FULL_FLUSH); !(cont == Z_OK || cont == Z_STREAM_END))
     {
-        throw std::exception("unknown error");
+        return tl::unexpected(std::make_unique<std::exception>("unknown error"));
     }
 
     if(zstream.avail_in != 0)
-        throw std::exception("Not enough bytes to decompress");
+        return tl::unexpected(std::make_unique<std::exception>("Not enough bytes to decompress"));
     if(zstream.avail_out != 0)
-        throw std::exception("size does not match");
+        return tl::unexpected(std::make_unique<std::exception>("size does not match"));
 
 
     return decompressedImage;
@@ -373,122 +441,136 @@ using ExplodedImages = std::vector<Filter0::Image>;
 using DefilteredImages = std::vector<Image>;
 using DeinterlacedImage = Image;
 
-DeinterlacedImage DeinterlaceImage(DefilteredImages reducedImages, ChunkData<"IHDR"> header)
+AnyError<DeinterlacedImage> DeinterlaceImage(DefilteredImages reducedImages, ChunkData<"IHDR"_ct> header)
 {
     switch(header.interlaceMethod)
     {
-    case InterlaceMethod::None:
-    {
-        return { std::move(reducedImages[0]) };
-    }
-    break;
-    case InterlaceMethod::Adam7:
-    {
-        DeinterlacedImage deinterlacedImage{ {reducedImages[0].imageInfo.pixelInfo, header.width, header.height } };
-
-        for(size_t i = 0; i < reducedImages.size(); i++)
+        case InterlaceMethod::None:
         {
-            DefilteredImages::value_type& currentImage = reducedImages[i];
-            for(std::int32_t y = 0; y < currentImage.imageInfo.height; y++)
-            {
-                Scanline<Byte> writeScanline = deinterlacedImage.GetScanline(y * Adam7::rowIncrement[i] + Adam7::startingRow[i]);
-                for(std::int32_t x = 0; x < currentImage.imageInfo.width; x++)
-                {
-                    std::span<Byte> writeBytes = writeScanline.GetPixel(Adam7::startingCol[i] + x * Adam7::columnIncrement[i]);
-                    std::span<Byte> readBytes = currentImage.GetPixel(x + y * currentImage.imageInfo.width);
+            return { std::move(reducedImages[0]) };
+        }
+        break;
+        case InterlaceMethod::Adam7:
+        {
+            DeinterlacedImage deinterlacedImage{ {reducedImages[0].imageInfo.pixelInfo, header.width, header.height } };
 
-                    std::copy(readBytes.begin(), readBytes.end(), writeBytes.begin());
+            for(size_t i = 0; i < reducedImages.size(); i++)
+            {
+                DefilteredImages::value_type& currentImage = reducedImages[i];
+                for(std::int32_t y = 0; y < currentImage.imageInfo.height; y++)
+                {
+                    Scanline<Byte> writeScanline = deinterlacedImage.GetScanline(y * Adam7::rowIncrement[i] + Adam7::startingRow[i]);
+                    for(std::int32_t x = 0; x < currentImage.imageInfo.width; x++)
+                    {
+                        std::span<Byte> writeBytes = writeScanline.GetPixel(Adam7::startingCol[i] + x * Adam7::columnIncrement[i]);
+                        std::span<Byte> readBytes = currentImage.GetPixel(x + y * currentImage.imageInfo.width);
+
+                        std::copy(readBytes.begin(), readBytes.end(), writeBytes.begin());
+                    }
                 }
             }
+
+            return deinterlacedImage;
         }
-
-        return deinterlacedImage;
-    }
-    break;
+        break;
     }
 
-    throw std::exception("Unknown interlace method");
+    return tl::unexpected(std::make_unique<std::exception>("Unknown interlace method"));
 }
 
-DefilteredImages DefilterImage(ExplodedImages filteredImages, const ChunkData<"IHDR">& headerChunk)
+AnyError<DefilteredImages> DefilterImage(ExplodedImages filteredImages, const ChunkData<"IHDR"_ct>& headerChunk)
 {
     DefilteredImages images;
     switch(headerChunk.filterMethod)
     {
-    case 0:
-        for(const auto& image : filteredImages)
-        {
-            Image defilteredImage{ image.image };
-
-            Filter0::ScanlineFilterer scanlines{ image.image.BytesPerPixel(), image.image.ScanlineSize() };
-            for(size_t i = 0; i < image.image.Height(); i++)
+        case 0:
+            for(const auto& image : filteredImages)
             {
-                auto filterByte = image.filterBytes[i];
-                auto filteredScanline = image.image.GetScanline(i);
-                auto unfilteredScanline = defilteredImage.GetScanline(i);
+                Image defilteredImage{ image.image };
 
-                scanlines.ApplyFilter(filteredScanline.bytes, Filter0::defilterFunctions[filterByte], unfilteredScanline.bytes);
+                Filter0::ScanlineFilterer scanlines{ image.image.BytesPerPixel(), image.image.ScanlineSize() };
+                for(size_t i = 0; i < image.image.Height(); i++)
+                {
+                    auto filterByte = image.filterBytes[i];
+                    auto filteredScanline = image.image.GetScanline(i);
+                    auto unfilteredScanline = defilteredImage.GetScanline(i);
+
+                    scanlines.ApplyFilter(filteredScanline.bytes, Filter0::defilterFunctions[filterByte], unfilteredScanline.bytes);
+                }
+
+                images.push_back(std::move(defilteredImage));
             }
-
-            images.push_back(std::move(defilteredImage));
-        }
-        return images;
-        break;
+            return images;
+            break;
     }
 
-    throw std::exception("Unexpected filter type");
+    return tl::unexpected(std::make_unique<std::exception>("Unexpected filter type"));
 }
 
-ReducedImages GetReducedImages(std::vector<Byte> decompressedImage, const ChunkData<"IHDR">& headerChunk)
+AnyError<ReducedImages> GetReducedImages(std::vector<Byte> decompressedImage, const ChunkData<"IHDR"_ct>& headerChunk)
 {
     ReducedImages deinterlacedImages;
     switch(headerChunk.interlaceMethod)
     {
-    case InterlaceMethod::None:
-    {
-        ReducedImages::value_type reducedImage{ { headerChunk.ToImageInfo() } };
-        reducedImage.filterBytes.resize(headerChunk.height);
-
-        for(std::uint32_t i = 0; i < reducedImage.filterBytes.size(); i++)
+        case InterlaceMethod::None:
         {
-
-            auto writeScanline = Scanline<Byte>::FromImage(reducedImage.image.bytes, reducedImage.image.imageInfo, i);
-            auto readScanline = Filter0::Scanline<const Byte>(decompressedImage, reducedImage.image.imageInfo, i);
-            std::copy(readScanline.first.bytes.begin(), readScanline.first.bytes.end(), writeScanline.bytes.begin());
-            reducedImage.filterBytes[i] = readScanline.second;
-        }
-
-        deinterlacedImages.push_back(reducedImage);
-        return deinterlacedImages;
-    }
-    case InterlaceMethod::Adam7:
-    {
-        size_t imageOffset = 0;
-        Adam7::ImageInfos imageInfos{ headerChunk.ToImageInfo() };
-        for(size_t i = 0; i < 7; i++)
-        {
-            ReducedImages::value_type reducedImage{ imageInfos.ToImageInfo(i) };
-            reducedImage.filterBytes.resize(imageInfos.heights[i]);
-
-            std::span reducedImageView = std::span(decompressedImage).subspan(imageOffset, Filter0::ImageSize(imageInfos.ToImageInfo(i)));
-            imageOffset += reducedImageView.size();
-
-            for(std::int32_t j = 0; j < reducedImage.image.imageInfo.height; j++)
+            if(auto value = headerChunk.ToImageInfo(); value)
             {
-                auto writeScanline = Scanline<Byte>::FromImage(reducedImage.image.bytes, reducedImage.image.imageInfo, j);
-                auto readScanline = Filter0::Scanline(reducedImageView, reducedImage.image.imageInfo, j);
-                std::copy(readScanline.first.bytes.begin(), readScanline.first.bytes.end(), writeScanline.bytes.begin());
-                reducedImage.filterBytes[j] = readScanline.second;
+                ReducedImages::value_type reducedImage{ std::move(value).value() };
+                reducedImage.filterBytes.resize(headerChunk.height);
+
+                for(std::uint32_t i = 0; i < reducedImage.filterBytes.size(); i++)
+                {
+
+                    auto writeScanline = Scanline<Byte>::FromImage(reducedImage.image.bytes, reducedImage.image.imageInfo, i);
+                    auto readScanline = Filter0::Scanline<const Byte>(decompressedImage, reducedImage.image.imageInfo, i);
+                    std::copy(readScanline.first.bytes.begin(), readScanline.first.bytes.end(), writeScanline.bytes.begin());
+                    reducedImage.filterBytes[i] = readScanline.second;
+                }
+
+                deinterlacedImages.push_back(reducedImage);
+                return deinterlacedImages;
             }
-            deinterlacedImages.push_back(reducedImage);
+            else
+            {
+                return tl::unexpected(std::move(value).error());
+            }
         }
-        return deinterlacedImages;
+        case InterlaceMethod::Adam7:
+        {
+            size_t imageOffset = 0;
+            if(auto value = headerChunk.ToImageInfo(); value)
+            {
+                Adam7::ImageInfos imageInfos{ std::move(value).value() };
+                for(size_t i = 0; i < 7; i++)
+                {
+                    ReducedImages::value_type reducedImage{ imageInfos.ToImageInfo(i).value() };
+                    reducedImage.filterBytes.resize(imageInfos.heights[i]);
+
+                    std::span reducedImageView = std::span(decompressedImage).subspan(imageOffset, Filter0::ImageSize(imageInfos.ToImageInfo(i).value()));
+                    imageOffset += reducedImageView.size();
+
+                    for(std::int32_t j = 0; j < reducedImage.image.imageInfo.height; j++)
+                    {
+                        auto writeScanline = Scanline<Byte>::FromImage(reducedImage.image.bytes, reducedImage.image.imageInfo, j);
+                        auto readScanline = Filter0::Scanline(reducedImageView, reducedImage.image.imageInfo, j);
+                        std::copy(readScanline.first.bytes.begin(), readScanline.first.bytes.end(), writeScanline.bytes.begin());
+                        reducedImage.filterBytes[j] = readScanline.second;
+                    }
+                    deinterlacedImages.push_back(reducedImage);
+                }
+                return deinterlacedImages;
+            }
+            else
+            {
+                return tl::unexpected(std::move(value).error());
+            }
+        }
     }
-    }
-    throw std::exception("Unknown filter type");
+    return tl::unexpected(std::make_unique<std::exception>("Unknown filter type"));
 }
 
-ExplodedImages ExplodeImages(ReducedImages images, const ChunkData<"IHDR">& headerChunk)
+ExplodedImages ExplodeImages(ReducedImages images, const ChunkData<"IHDR"_ct>& headerChunk)
 {
     ExplodedImages explodedImages;
 
@@ -521,7 +603,7 @@ ExplodedImages ExplodeImages(ReducedImages images, const ChunkData<"IHDR">& head
     return explodedImages;
 }
 
-DeinterlacedImage ConvertTo8BitDepth(DeinterlacedImage image, ChunkData<"IHDR"> header)
+DeinterlacedImage ConvertTo8BitDepth(DeinterlacedImage image, ChunkData<"IHDR"_ct> header)
 {
     if(header.bitDepth > 8)
     {
@@ -551,7 +633,7 @@ DeinterlacedImage ConvertTo8BitDepth(DeinterlacedImage image, ChunkData<"IHDR"> 
     return image;
 }
 
-DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"> header, const ChunkData<"PLTE">& palette)
+DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"_ct> header, const ChunkData<"PLTE"_ct>& palette)
 {
     if(header.colorType == ColorType::IndexedColor)
     {
@@ -618,23 +700,54 @@ DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"> header, 
     return image;
 }
 
-Image2 ParsePNG(std::istream& stream)
+AnyError<Image2> ParsePNG(std::istream& stream)
 {
-    VerifySignature(stream);
+    tl::expected<void, std::unique_ptr<std::exception>> signatureVerifier = VerifySignature(stream);
 
-    DecodedChunks chunks = ChunkDecoder{ stream }.Chunks();
-    std::vector<Byte> decompressedImageData = DecompressImage(ConcatDataChunks(chunks.Get<"IDAT">()), chunks.Get<"IHDR">());
-    ReducedImages view = GetReducedImages(std::move(decompressedImageData), chunks.Get<"IHDR">());
-    ExplodedImages explodedImages = ExplodeImages(std::move(view), chunks.Get<"IHDR">());
-    DefilteredImages defilteredImages = DefilterImage(std::move(explodedImages), chunks.Get<"IHDR">());
-    DeinterlacedImage deinterlacedImage = DeinterlaceImage(std::move(defilteredImages), chunks.Get<"IHDR">());
-    deinterlacedImage = ConvertTo8BitDepth(std::move(deinterlacedImage), chunks.Get<"IHDR">());
-    deinterlacedImage = ColorImage(std::move(deinterlacedImage), chunks.Get<"IHDR">(), chunks.Get<"PLTE">());
-    Image2 i;
-    i.width = deinterlacedImage.Width();
-    i.height = deinterlacedImage.Height();
-    i.imageBytes = std::move(deinterlacedImage.bytes);
-    i.pitch = deinterlacedImage.ScanlineSize();
-    i.bitDepth = deinterlacedImage.BitsPerPixel();
-    return i;
+    if(!signatureVerifier)
+        return tl::unexpected(std::move(signatureVerifier).error());
+
+    return ChunkDecoder::Create(stream).and_then([](ChunkDecoder decoder) -> AnyError<Image2>
+        {
+            DecodedChunks chunks = std::move(decoder).Chunks();
+
+            AnyError<DeinterlacedImage> image = ConcatDataChunks(chunks.Get<"IDAT"_ct>())
+                .and_then([&](std::vector<Byte> bytes)
+                    {
+                        return DecompressImage(std::move(bytes), chunks.Get<"IHDR"_ct>());
+                    })
+                .and_then([&](std::vector<Byte> bytes)
+                    {
+                        return GetReducedImages(std::move(bytes), chunks.Get<"IHDR"_ct>());
+                    })
+                .and_then([&](ReducedImages images) -> AnyError<ExplodedImages>
+                    {
+                        return ExplodeImages(std::move(images), chunks.Get<"IHDR"_ct>());
+                    })
+                .and_then([&](ExplodedImages images)
+                    {
+                        return DefilterImage(std::move(images), chunks.Get<"IHDR"_ct>());
+                    })
+                .and_then([&](DefilteredImages images)
+                    {
+                        return DeinterlaceImage(std::move(images), chunks.Get<"IHDR"_ct>());
+                    })
+                .and_then([&](DeinterlacedImage images) -> AnyError<DeinterlacedImage>
+                    {
+                        images = ConvertTo8BitDepth(std::move(images), chunks.Get<"IHDR"_ct>());
+                        images = ColorImage(std::move(images), chunks.Get<"IHDR"_ct>(), chunks.Get<"PLTE"_ct>());
+                        return images;
+                    });
+            if(!image)
+                return tl::unexpected(std::move(image).error());
+
+            DeinterlacedImage deinterlacedImage = std::move(image).value();
+            Image2 i;
+            i.width = deinterlacedImage.Width();
+            i.height = deinterlacedImage.Height();
+            i.imageBytes = std::move(deinterlacedImage.bytes);
+            i.pitch = deinterlacedImage.ScanlineSize();
+            i.bitDepth = deinterlacedImage.BitsPerPixel();
+            return i;
+        });
 }

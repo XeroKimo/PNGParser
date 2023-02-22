@@ -3,6 +3,9 @@ module;
 #include <bit>
 #include <array>
 #include <algorithm>
+#include <tl/expected.hpp>
+#include <memory>
+#include <stdexcept>
 
 export module PNGParser:PlatformDetection;
 
@@ -10,6 +13,9 @@ constexpr bool IsPlatformNetworkByteOrder = std::endian::native == std::endian::
 constexpr bool SwapByteOrder = !IsPlatformNetworkByteOrder;
 
 export using Byte = std::uint8_t;
+
+template<class Ty>
+using AnyError = tl::expected<Ty, std::unique_ptr<std::exception>>;
 
 export template<size_t Count>
 using Bytes = std::array<Byte, Count>;
