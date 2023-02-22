@@ -113,7 +113,7 @@ public:
             {
                 if(dynamic_cast<UnknownChunkError*>(parsedChunk.error().get()))
                 {
-                    std::cout << parsedChunk.error()->what();
+                    //std::cout << parsedChunk.error()->what();
                 }
                 else
                 {
@@ -191,76 +191,76 @@ private:
 
         switch(type)
         {
-            case "IHDR"_ct:
-                if(auto value = ParseChunkData<"IHDR"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "PLTE"_ct:
-                if(auto value = ParseChunkData<"PLTE"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "IDAT"_ct:
-                if(auto value = ParseChunkData<"IDAT"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "IEND"_ct:
-                break;
-            case "cHRM"_ct:
-                if(auto value = ParseChunkData<"cHRM"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "gAMA"_ct:
-                if(auto value = ParseChunkData<"gAMA"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "iCCP"_ct:
-                if(auto value = ParseChunkData<"iCCP"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "sBIT"_ct:
-                if(auto value = ParseChunkData<"sBIT"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "sRGB"_ct:
-                if(auto value = ParseChunkData<"sRGB"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "bKGD"_ct:
-                if(auto value = ParseChunkData<"bKGD"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "hIST"_ct:
-                if(auto value = ParseChunkData<"hIST"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "tRNS"_ct:
-                if(auto value = ParseChunkData<"tRNS"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "pHYs"_ct:
-                if(auto value = ParseChunkData<"pHYs"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "sPLT"_ct:
-                if(auto value = ParseChunkData<"sPLT"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "tIME"_ct:
-                if(auto value = ParseChunkData<"tIME"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "iTXt"_ct:
-                if(auto value = ParseChunkData<"iTXt"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "tEXt"_ct:
-                if(auto value = ParseChunkData<"tEXt"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
-            case "zTXt"_ct:
-                if(auto value = ParseChunkData<"zTXt"_ct>(chunkStream); !value)
-                    return tl::unexpected(std::move(value).error());
-                break;
+            //case "IHDR"_ct:
+            //    if(auto value = ParseChunkData<"IHDR"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "PLTE"_ct:
+            //    if(auto value = ParseChunkData<"PLTE"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "IDAT"_ct:
+            //    if(auto value = ParseChunkData<"IDAT"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "IEND"_ct:
+            //    break;
+            //case "cHRM"_ct:
+            //    if(auto value = ParseChunkData<"cHRM"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "gAMA"_ct:
+            //    if(auto value = ParseChunkData<"gAMA"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "iCCP"_ct:
+            //    if(auto value = ParseChunkData<"iCCP"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "sBIT"_ct:
+            //    if(auto value = ParseChunkData<"sBIT"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "sRGB"_ct:
+            //    if(auto value = ParseChunkData<"sRGB"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "bKGD"_ct:
+            //    if(auto value = ParseChunkData<"bKGD"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "hIST"_ct:
+            //    if(auto value = ParseChunkData<"hIST"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "tRNS"_ct:
+            //    if(auto value = ParseChunkData<"tRNS"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "pHYs"_ct:
+            //    if(auto value = ParseChunkData<"pHYs"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "sPLT"_ct:
+            //    if(auto value = ParseChunkData<"sPLT"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "tIME"_ct:
+            //    if(auto value = ParseChunkData<"tIME"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "iTXt"_ct:
+            //    if(auto value = ParseChunkData<"iTXt"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "tEXt"_ct:
+            //    if(auto value = ParseChunkData<"tEXt"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
+            //case "zTXt"_ct:
+            //    if(auto value = ParseChunkData<"zTXt"_ct>(chunkStream); !value)
+            //        return tl::unexpected(std::move(value).error());
+            //    break;
             default:
                 return tl::unexpected(std::make_unique<UnknownChunkError>(type));
                 break;
@@ -375,7 +375,7 @@ private:
 AnyError<std::vector<Byte>> ConcatDataChunks(std::span<const ChunkData<"IDAT"_ct>> dataChunks)
 {
     if(dataChunks.size() == 0)
-        tl::unexpected(std::make_unique<std::exception>("No data chunks found"));
+        return tl::unexpected(std::make_unique<std::exception>("No data chunks found"));
     size_t sizeWritten = 0;
     size_t totalSize = std::accumulate(dataChunks.begin(), dataChunks.end(), size_t(0), [](size_t val, const ChunkData<"IDAT"_ct>& d) { return val + d.bytes.size(); });
 
