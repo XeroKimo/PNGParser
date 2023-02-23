@@ -3,7 +3,7 @@ module;
 #include <concepts>
 #include <istream>
 #include <array>
-#include <tl/expected.hpp>
+#include "tl/expected.hpp"
 
 export module PNGParser:ChunkParser;
 import :PlatformDetection;

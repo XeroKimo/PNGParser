@@ -15,7 +15,7 @@ module;
 #include <numeric>
 #include <limits>
 #include <variant>
-#include <tl/expected.hpp>
+#include "tl/expected.hpp"
 #include <memory>
 
 module PNGParser;
@@ -78,12 +78,12 @@ public:
     void Disengage() { m_engaged = false; }
 };
 
-tl::expected<void, std::unique_ptr<std::exception>> VerifySignature(std::istream& stream)
+AnyError<void> VerifySignature(std::istream& stream)
 {
     auto signature = ReadBytes<PNGSignature.size()>(stream);
     if(signature != PNGSignature)
     {
-        return tl::unexpected(std::make_unique<std::exception>("PNG signature could not be matched"));
+        return tl::unexpected(std::make_shared<std::exception>("PNG signature could not be matched"));
     }
     return {};
 }
@@ -100,7 +100,7 @@ private:
 private:
     ChunkDecoder() = default;
 public:
-    static tl::expected<ChunkDecoder, std::unique_ptr<std::exception>> Create(std::istream& stream)
+    static AnyError<ChunkDecoder> Create(std::istream& stream)
     {
         ChunkDecoder d;
 
@@ -191,84 +191,84 @@ private:
 
         switch(type)
         {
-            //case "IHDR"_ct:
-            //    if(auto value = ParseChunkData<"IHDR"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "PLTE"_ct:
-            //    if(auto value = ParseChunkData<"PLTE"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "IDAT"_ct:
-            //    if(auto value = ParseChunkData<"IDAT"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "IEND"_ct:
-            //    break;
-            //case "cHRM"_ct:
-            //    if(auto value = ParseChunkData<"cHRM"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "gAMA"_ct:
-            //    if(auto value = ParseChunkData<"gAMA"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "iCCP"_ct:
-            //    if(auto value = ParseChunkData<"iCCP"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "sBIT"_ct:
-            //    if(auto value = ParseChunkData<"sBIT"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "sRGB"_ct:
-            //    if(auto value = ParseChunkData<"sRGB"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "bKGD"_ct:
-            //    if(auto value = ParseChunkData<"bKGD"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "hIST"_ct:
-            //    if(auto value = ParseChunkData<"hIST"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "tRNS"_ct:
-            //    if(auto value = ParseChunkData<"tRNS"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "pHYs"_ct:
-            //    if(auto value = ParseChunkData<"pHYs"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "sPLT"_ct:
-            //    if(auto value = ParseChunkData<"sPLT"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "tIME"_ct:
-            //    if(auto value = ParseChunkData<"tIME"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "iTXt"_ct:
-            //    if(auto value = ParseChunkData<"iTXt"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "tEXt"_ct:
-            //    if(auto value = ParseChunkData<"tEXt"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
-            //case "zTXt"_ct:
-            //    if(auto value = ParseChunkData<"zTXt"_ct>(chunkStream); !value)
-            //        return tl::unexpected(std::move(value).error());
-            //    break;
+            case "IHDR"_ct:
+                if(auto value = ParseChunkData<"IHDR"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "PLTE"_ct:
+                if(auto value = ParseChunkData<"PLTE"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "IDAT"_ct:
+                if(auto value = ParseChunkData<"IDAT"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "IEND"_ct:
+                break;
+            case "cHRM"_ct:
+                if(auto value = ParseChunkData<"cHRM"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "gAMA"_ct:
+                if(auto value = ParseChunkData<"gAMA"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "iCCP"_ct:
+                if(auto value = ParseChunkData<"iCCP"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "sBIT"_ct:
+                if(auto value = ParseChunkData<"sBIT"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "sRGB"_ct:
+                if(auto value = ParseChunkData<"sRGB"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "bKGD"_ct:
+                if(auto value = ParseChunkData<"bKGD"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "hIST"_ct:
+                if(auto value = ParseChunkData<"hIST"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "tRNS"_ct:
+                if(auto value = ParseChunkData<"tRNS"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "pHYs"_ct:
+                if(auto value = ParseChunkData<"pHYs"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "sPLT"_ct:
+                if(auto value = ParseChunkData<"sPLT"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "tIME"_ct:
+                if(auto value = ParseChunkData<"tIME"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "iTXt"_ct:
+                if(auto value = ParseChunkData<"iTXt"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "tEXt"_ct:
+                if(auto value = ParseChunkData<"tEXt"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
+            case "zTXt"_ct:
+                if(auto value = ParseChunkData<"zTXt"_ct>(chunkStream); !value)
+                    return tl::unexpected(std::move(value).error());
+                break;
             default:
-                return tl::unexpected(std::make_unique<UnknownChunkError>(type));
+                return tl::unexpected(std::make_shared<UnknownChunkError>(type));
                 break;
         }
 
         if(chunkStream.HasUnreadData())
         {
-            return tl::unexpected(std::make_unique<std::logic_error>("Chunk data has not been fully parsed"));
+            return tl::unexpected(std::make_shared<std::logic_error>("Chunk data has not been fully parsed"));
         }
 
         return {};
@@ -375,7 +375,7 @@ private:
 AnyError<std::vector<Byte>> ConcatDataChunks(std::span<const ChunkData<"IDAT"_ct>> dataChunks)
 {
     if(dataChunks.size() == 0)
-        return tl::unexpected(std::make_unique<std::exception>("No data chunks found"));
+        return tl::unexpected(std::make_shared<std::exception>("No data chunks found"));
     size_t sizeWritten = 0;
     size_t totalSize = std::accumulate(dataChunks.begin(), dataChunks.end(), size_t(0), [](size_t val, const ChunkData<"IDAT"_ct>& d) { return val + d.bytes.size(); });
 
@@ -398,7 +398,7 @@ AnyError<std::vector<Byte>> DecompressImage(std::vector<Byte> dataBytes, const C
     zstream.avail_in = dataBytes.size();
 
     if(inflateInit(&zstream) != Z_OK)
-        return tl::unexpected(std::make_unique<std::exception>("zstream failed to initialize"));
+        return tl::unexpected(std::make_shared<std::exception>("zstream failed to initialize"));
 
     ScopeGuard endInflate = [&zstream]
     {
@@ -423,13 +423,13 @@ AnyError<std::vector<Byte>> DecompressImage(std::vector<Byte> dataBytes, const C
 
     if(auto cont = inflate(&zstream, Z_FULL_FLUSH); !(cont == Z_OK || cont == Z_STREAM_END))
     {
-        return tl::unexpected(std::make_unique<std::exception>("unknown error"));
+        return tl::unexpected(std::make_shared<std::exception>("unknown error"));
     }
 
     if(zstream.avail_in != 0)
-        return tl::unexpected(std::make_unique<std::exception>("Not enough bytes to decompress"));
+        return tl::unexpected(std::make_shared<std::exception>("Not enough bytes to decompress"));
     if(zstream.avail_out != 0)
-        return tl::unexpected(std::make_unique<std::exception>("size does not match"));
+        return tl::unexpected(std::make_shared<std::exception>("size does not match"));
 
 
     return decompressedImage;
@@ -475,7 +475,7 @@ AnyError<DeinterlacedImage> DeinterlaceImage(DefilteredImages reducedImages, Chu
         break;
     }
 
-    return tl::unexpected(std::make_unique<std::exception>("Unknown interlace method"));
+    return tl::unexpected(std::make_shared<std::exception>("Unknown interlace method"));
 }
 
 AnyError<DefilteredImages> DefilterImage(ExplodedImages filteredImages, const ChunkData<"IHDR"_ct>& headerChunk)
@@ -504,7 +504,7 @@ AnyError<DefilteredImages> DefilterImage(ExplodedImages filteredImages, const Ch
             break;
     }
 
-    return tl::unexpected(std::make_unique<std::exception>("Unexpected filter type"));
+    return tl::unexpected(std::make_shared<std::exception>("Unexpected filter type"));
 }
 
 AnyError<ReducedImages> GetReducedImages(std::vector<Byte> decompressedImage, const ChunkData<"IHDR"_ct>& headerChunk)
@@ -567,7 +567,7 @@ AnyError<ReducedImages> GetReducedImages(std::vector<Byte> decompressedImage, co
             }
         }
     }
-    return tl::unexpected(std::make_unique<std::exception>("Unknown filter type"));
+    return tl::unexpected(std::make_shared<std::exception>("Unknown filter type"));
 }
 
 ExplodedImages ExplodeImages(ReducedImages images, const ChunkData<"IHDR"_ct>& headerChunk)
@@ -702,7 +702,7 @@ DeinterlacedImage ColorImage(DeinterlacedImage image, ChunkData<"IHDR"_ct> heade
 
 AnyError<Image2> ParsePNG(std::istream& stream)
 {
-    tl::expected<void, std::unique_ptr<std::exception>> signatureVerifier = VerifySignature(stream);
+    AnyError<void> signatureVerifier = VerifySignature(stream);
 
     if(!signatureVerifier)
         return tl::unexpected(std::move(signatureVerifier).error());

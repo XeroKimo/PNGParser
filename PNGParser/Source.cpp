@@ -5,7 +5,8 @@
 #include <bit>
 #include <chrono>
 #include <filesystem>
-#include <tl/expected.hpp>
+#include <numeric>
+#include "tl/expected.hpp"
 
 import PNGParser;
 
@@ -15,6 +16,7 @@ static constexpr int benchmarkAttempts = 100;
 
 void OutputTest(std::string file)
 {
+    std::unique_ptr<std::array<std::chrono::nanoseconds, benchmarkAttempts>> attempts = std::make_unique<std::array<std::chrono::nanoseconds, benchmarkAttempts>>();
     for(int i = 0; i < benchmarkAttempts; i++)
     {
         std::fstream image{ file, std::ios::binary | std::ios::in };
@@ -27,9 +29,14 @@ void OutputTest(std::string file)
 
             if(!suceeded)
                 std::cout << "Error occured. ";
-            std::cout << "Time taken to parse: " << std::chrono::duration_cast<std::chrono::nanoseconds>(end - timePoint) << "\n";
+            (*attempts)[i] = std::chrono::duration_cast<std::chrono::nanoseconds>(end - timePoint);
+            std::cout << "Time taken to parse: " << (*attempts)[i] << "\n";
         }
     }
+
+    std::cout << "Min: " << *std::min_element(attempts->begin(), attempts->end()) << "\n";
+    std::cout << "Max: " << *std::max_element(attempts->begin(), attempts->end()) << "\n";
+    std::cout << "Average Time to parse: " << std::accumulate(attempts->begin(), attempts->end(), std::chrono::nanoseconds{}) / benchmarkAttempts << "\n";
 }
 
 int main()

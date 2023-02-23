@@ -12,7 +12,7 @@ module;
 #include <istream>
 #include <cassert>
 #include <memory>
-#include <tl/expected.hpp>
+#include "tl/expected.hpp"
 
 export module PNGParser;
 import :PlatformDetection;
