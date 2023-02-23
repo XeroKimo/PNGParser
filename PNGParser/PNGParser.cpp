@@ -83,7 +83,7 @@ AnyError<void> VerifySignature(std::istream& stream)
     auto signature = ReadBytes<PNGSignature.size()>(stream);
     if(signature != PNGSignature)
     {
-        return tl::unexpected(std::make_shared<std::exception>("PNG signature could not be matched"));
+        return tl::unexpected(PNGError::Unknown_Signature);
     }
     return {};
 }
@@ -111,7 +111,7 @@ public:
 
             if(!parsedChunk)
             {
-                if(dynamic_cast<UnknownChunkError*>(parsedChunk.error().get()))
+                if(parsedChunk.error() == PNGError::Unknown_Chunk)
                 {
                     //std::cout << parsedChunk.error()->what();
                 }
@@ -173,7 +173,7 @@ private:
         if(auto value = VisitParseChunkData(stream, chunkSize, type); !value)
             return tl::unexpected(std::move(value).error());
 
-        std::uint32_t crc;
+        //std::uint32_t crc;
         if(auto value = ParseBytes<std::uint32_t>(stream); !value)
             return tl::unexpected(std::move(value).error());
 
@@ -262,13 +262,13 @@ private:
                     return tl::unexpected(std::move(value).error());
                 break;
             default:
-                return tl::unexpected(std::make_shared<UnknownChunkError>(type));
+                return tl::unexpected(PNGError::Unknown_Chunk);
                 break;
         }
 
         if(chunkStream.HasUnreadData())
         {
-            return tl::unexpected(std::make_shared<std::logic_error>("Chunk data has not been fully parsed"));
+            return tl::unexpected(PNGError::Chunk_Not_Fully_Parsed);
         }
 
         return {};
@@ -375,7 +375,7 @@ private:
 AnyError<std::vector<Byte>> ConcatDataChunks(std::span<const ChunkData<"IDAT"_ct>> dataChunks)
 {
     if(dataChunks.size() == 0)
-        return tl::unexpected(std::make_shared<std::exception>("No data chunks found"));
+        return tl::unexpected(PNGError::No_Chunks_Found);
     size_t sizeWritten = 0;
     size_t totalSize = std::accumulate(dataChunks.begin(), dataChunks.end(), size_t(0), [](size_t val, const ChunkData<"IDAT"_ct>& d) { return val + d.bytes.size(); });
 
@@ -395,10 +395,10 @@ AnyError<std::vector<Byte>> DecompressImage(std::vector<Byte> dataBytes, const C
 {
     z_stream zstream = {};
     zstream.next_in = dataBytes.data();
-    zstream.avail_in = dataBytes.size();
+    zstream.avail_in = static_cast<std::uint32_t>(dataBytes.size());
 
     if(inflateInit(&zstream) != Z_OK)
-        return tl::unexpected(std::make_shared<std::exception>("zstream failed to initialize"));
+        return tl::unexpected(PNGError::Stream_Initialization_Failure);
 
     ScopeGuard endInflate = [&zstream]
     {
@@ -419,17 +419,17 @@ AnyError<std::vector<Byte>> DecompressImage(std::vector<Byte> dataBytes, const C
     }
 
     zstream.next_out = &decompressedImage[0];
-    zstream.avail_out = decompressedImage.size();
+    zstream.avail_out = static_cast<std::uint32_t>(decompressedImage.size());
 
     if(auto cont = inflate(&zstream, Z_FULL_FLUSH); !(cont == Z_OK || cont == Z_STREAM_END))
     {
-        return tl::unexpected(std::make_shared<std::exception>("unknown error"));
+        return tl::unexpected(PNGError::Unknown_Error);
     }
 
     if(zstream.avail_in != 0)
-        return tl::unexpected(std::make_shared<std::exception>("Not enough bytes to decompress"));
+        return tl::unexpected(PNGError::Insufficient_Size);
     if(zstream.avail_out != 0)
-        return tl::unexpected(std::make_shared<std::exception>("size does not match"));
+        return tl::unexpected(PNGError::Size_Mismatch);
 
 
     return decompressedImage;
@@ -475,7 +475,7 @@ AnyError<DeinterlacedImage> DeinterlaceImage(DefilteredImages reducedImages, Chu
         break;
     }
 
-    return tl::unexpected(std::make_shared<std::exception>("Unknown interlace method"));
+    return tl::unexpected(PNGError::Unknown_Interlace_Method);
 }
 
 AnyError<DefilteredImages> DefilterImage(ExplodedImages filteredImages, const ChunkData<"IHDR"_ct>& headerChunk)
@@ -504,7 +504,7 @@ AnyError<DefilteredImages> DefilterImage(ExplodedImages filteredImages, const Ch
             break;
     }
 
-    return tl::unexpected(std::make_shared<std::exception>("Unexpected filter type"));
+    return tl::unexpected(PNGError::Unknown_Filter_Type);
 }
 
 AnyError<ReducedImages> GetReducedImages(std::vector<Byte> decompressedImage, const ChunkData<"IHDR"_ct>& headerChunk)
@@ -567,7 +567,7 @@ AnyError<ReducedImages> GetReducedImages(std::vector<Byte> decompressedImage, co
             }
         }
     }
-    return tl::unexpected(std::make_shared<std::exception>("Unknown filter type"));
+    return tl::unexpected(PNGError::Unknown_Filter_Type);
 }
 
 ExplodedImages ExplodeImages(ReducedImages images, const ChunkData<"IHDR"_ct>& headerChunk)

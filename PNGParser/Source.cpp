@@ -24,11 +24,19 @@ void OutputTest(std::string file)
         if(image.is_open())
         {
             auto timePoint = std::chrono::steady_clock::now();
-            ParsePNG(image).map_error([&suceeded](auto&) { suceeded = false; });
+            auto error = ParsePNG(image);
+            error.map_error([&suceeded](auto&)
+                { 
+                    suceeded = false; 
+                });
             auto end = std::chrono::steady_clock::now();
 
             if(!suceeded)
                 std::cout << "Error occured. ";
+            if(!error)
+            {
+                std::cout << " ErrorID: " << static_cast<int>(error.error()) << " ";
+            }
             (*attempts)[i] = std::chrono::duration_cast<std::chrono::nanoseconds>(end - timePoint);
             std::cout << "Time taken to parse: " << (*attempts)[i] << "\n";
         }

@@ -17,7 +17,7 @@ AnyError<Bytes<Count>> ReadBytes(std::istream& stream)
         b = static_cast<Byte>(stream.get());
 
     if(stream.bad())
-        return tl::unexpected(std::make_unique<std::exception>("An error has occured while reading bytes"));
+        return tl::unexpected(PNGError::Unknown_Parse_Error);
 
     return bytes;
 }
@@ -44,7 +44,7 @@ AnyError<Bytes<Count>> ReadNativeBytes(std::istream& stream)
     }
 
     if(stream.bad())
-        return tl::unexpected(std::make_unique<std::exception>("An error has occured while reading bytes"));
+        return tl::unexpected(PNGError::Unknown_Parse_Error);
 
     return bytes;
 };
@@ -105,7 +105,7 @@ public:
         std::uint32_t bytesRead = m_bytesRead + Count;
 
         if(bytesRead > m_chunkSize)
-            return tl::unexpected(std::make_unique<std::out_of_range>("Reading memory outside of range"));
+            return tl::unexpected(PNGError::Out_Of_Range_Access);
 
         m_bytesRead = bytesRead;
 
@@ -129,7 +129,7 @@ public:
         std::uint32_t bytesRead = m_bytesRead + Count;
 
         if(bytesRead > m_chunkSize)
-            return tl::unexpected(std::make_unique<std::out_of_range>("Reading memory outside of range"));
+            return tl::unexpected(PNGError::Out_Of_Range_Access);
 
         m_bytesRead = bytesRead;
 

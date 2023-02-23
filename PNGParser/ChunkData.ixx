@@ -207,7 +207,7 @@ AnyError<std::string> ReadCString(ChunkDataInputStream& stream, std::size_t maxS
         return tl::unexpected(std::move(letter).error());
 
     if(std::move(letter).value() != 0)
-        return tl::unexpected(std::make_unique<std::runtime_error>("Null terminator not found when parsing suggested palette name"));
+        return tl::unexpected(PNGError::String_Not_Null_Terminated);
 
     return string;
 }
@@ -297,7 +297,7 @@ struct ChunkTraits<"IHDR"_ct>
                     return format.subpixelCount;
             }
 
-            return tl::unexpected(std::make_unique<std::exception>("Unexpected pixel type"));
+            return tl::unexpected(PNGError::Unsupported_Color_Format);
         }
 
         AnyError<ImageInfo> ToImageInfo() const
@@ -356,20 +356,22 @@ struct ChunkTraits<"IHDR"_ct>
         auto it = std::find_if(standardColorFormats.begin(), standardColorFormats.end(), [data](const ColorFormatView& format) { return format.type == data.colorType; });
         
         if(it == standardColorFormats.end())
-            return tl::unexpected(std::make_unique<std::runtime_error>("Unexpected color type: " + std::to_string(static_cast<int>(data.colorType))));
+            return tl::unexpected(PNGError::Unsupported_Color_Format);
         
         auto matchBitdepth = [data](int bitDepth) { return data.bitDepth == bitDepth; };
 
         if(std::none_of(it->allowBitDepths.begin(), it->allowBitDepths.end(), matchBitdepth))
         {
-            return tl::unexpected(std::make_unique<std::runtime_error>("Unsupported bit depth color type: " + std::string(it->name) + " bitDepth: " + std::to_string(static_cast<int>(data.colorType))));
+            return tl::unexpected(PNGError::Unsupported_Color_Format);
         }
+
+        return {};
     }
 
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() != maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
 
@@ -436,7 +438,7 @@ struct ChunkTraits<"PLTE"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() % 3 > 0)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
         for(size_t i = 0; i < maxEntries && stream.HasUnreadData(); i++)
@@ -471,7 +473,7 @@ struct ChunkTraits<"IDAT"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() > maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
         data.bytes.reserve(stream.ChunkSize());
@@ -503,7 +505,7 @@ struct ChunkTraits<"IEND"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() > maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         return {};
     }
@@ -534,7 +536,7 @@ struct ChunkTraits<"cHRM"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() > maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
 
@@ -600,7 +602,7 @@ struct ChunkTraits<"gAMA"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() != maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
 
@@ -633,7 +635,7 @@ struct ChunkTraits<"iCCP"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() > maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
 
@@ -679,7 +681,7 @@ struct ChunkTraits<"sBIT"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() > maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
 
@@ -713,7 +715,7 @@ struct ChunkTraits<"sRGB"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() != maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
 
@@ -775,7 +777,7 @@ struct ChunkTraits<"bKGD"_ct>
                 return tl::unexpected(std::move(value).error());
         }
         else
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         return data;
     }
@@ -799,7 +801,7 @@ struct ChunkTraits<"hIST"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() > maxSize || (stream.ChunkSize() % sizeof(std::uint16_t) > 0))
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
 
@@ -863,7 +865,7 @@ struct ChunkTraits<"pHYs"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() != maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
 
@@ -994,7 +996,7 @@ struct ChunkTraits<"sPLT"_ct>
             }
         }
         else
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " unexpected sample depth to remaining stream chunk size when parsing suggested palette.\nSample Depth: " + std::to_string(data.sampleDepth) + "\nRemaining Chunk Size: " + std::to_string(stream.UnreadSize())));
+            return tl::unexpected(PNGError::Unsupported_Color_Format);
 
         return data;
     }
@@ -1023,7 +1025,7 @@ struct ChunkTraits<"tIME"_ct>
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)
     {
         if(stream.ChunkSize() != maxSize)
-            return tl::unexpected(std::make_unique<std::runtime_error>(std::string(identifier.ToString()) + " data exceeds the expected size\nGiven size: " + std::to_string(stream.ChunkSize()) + "\nExpected size: " + std::to_string(maxSize) + "\n"));
+            return tl::unexpected(PNGError::Chunk_Expected_Size_Exceeded);
 
         Data data;
 

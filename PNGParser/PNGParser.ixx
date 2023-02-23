@@ -58,7 +58,7 @@ AnyError<std::size_t> DecompressedImageSize(const ChunkData<"IHDR"_ct>& header)
         }
         }
 
-        return tl::unexpected(std::make_unique<std::exception>("Unknown interlace method"));
+        return tl::unexpected(PNGError::Unknown_Interlace_Method);
     };
 
     switch(header.filterMethod)
@@ -67,5 +67,5 @@ AnyError<std::size_t> DecompressedImageSize(const ChunkData<"IHDR"_ct>& header)
         return filter0();
     }
 
-    return tl::unexpected(std::make_unique<std::exception>("Unknown filter type"));
+    return tl::unexpected(PNGError::Unknown_Filter_Type);
 }

@@ -100,7 +100,7 @@ namespace Adam7
         AnyError<ImageInfo> ToImageInfo(size_t passIndex) const
         {
             if(passIndex > heights.size())
-                return tl::unexpected(std::make_shared<std::out_of_range>("Out of range access"));
+                return tl::unexpected(PNGError::Out_Of_Range_Access);
 
             return ImageInfo{ pixelInfo, widths[passIndex], heights[passIndex] };
         }
@@ -108,7 +108,7 @@ namespace Adam7
         AnyError<std::size_t> ImageSize(size_t passIndex) const
         {
             if(passIndex > heights.size())
-                return tl::unexpected(std::make_shared<std::out_of_range>("Out of range access"));
+                return tl::unexpected(PNGError::Out_Of_Range_Access);
             return scanlineSizes[passIndex] * heights[passIndex];
         }
 
