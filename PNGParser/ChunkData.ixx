@@ -364,6 +364,8 @@ struct ChunkTraits<"IHDR"_ct>
         {
             return tl::unexpected(std::make_unique<std::runtime_error>("Unsupported bit depth color type: " + std::string(it->name) + " bitDepth: " + std::to_string(static_cast<int>(data.colorType))));
         }
+
+        return {};
     }
 
     static AnyError<Data> Parse(ChunkDataInputStream& stream, DecodedChunks& chunks)

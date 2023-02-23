@@ -173,7 +173,7 @@ private:
         if(auto value = VisitParseChunkData(stream, chunkSize, type); !value)
             return tl::unexpected(std::move(value).error());
 
-        std::uint32_t crc;
+        //std::uint32_t crc;
         if(auto value = ParseBytes<std::uint32_t>(stream); !value)
             return tl::unexpected(std::move(value).error());
 
@@ -395,7 +395,7 @@ AnyError<std::vector<Byte>> DecompressImage(std::vector<Byte> dataBytes, const C
 {
     z_stream zstream = {};
     zstream.next_in = dataBytes.data();
-    zstream.avail_in = dataBytes.size();
+    zstream.avail_in = static_cast<std::uint32_t>(dataBytes.size());
 
     if(inflateInit(&zstream) != Z_OK)
         return tl::unexpected(std::make_shared<std::exception>("zstream failed to initialize"));
@@ -419,7 +419,7 @@ AnyError<std::vector<Byte>> DecompressImage(std::vector<Byte> dataBytes, const C
     }
 
     zstream.next_out = &decompressedImage[0];
-    zstream.avail_out = decompressedImage.size();
+    zstream.avail_out = static_cast<std::uint32_t>(decompressedImage.size());
 
     if(auto cont = inflate(&zstream, Z_FULL_FLUSH); !(cont == Z_OK || cont == Z_STREAM_END))
     {
