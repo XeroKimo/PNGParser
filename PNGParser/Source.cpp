@@ -27,7 +27,7 @@ void OutputTest(std::string file)
             {
                 ParsePNG(image);
             }
-            catch(std::exception& e)
+            catch(std::exception&)
             {
                 suceeded = false;
             }
