@@ -106,7 +106,7 @@ public:
             }
             catch(const UnknownChunkError& e)
             {
-                std::cout << e.what();
+                //std::cout << e.what();
             }
         }
     }
