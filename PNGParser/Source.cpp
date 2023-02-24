@@ -24,7 +24,9 @@ void OutputTest(std::string file)
         if(image.is_open())
         {
             auto timePoint = std::chrono::steady_clock::now();
-            ParsePNG(image).map_error([&suceeded](auto&) { suceeded = false; });
+            {
+                ParsePNG(image).map_error([&suceeded](auto&) { suceeded = false; });
+            }
             auto end = std::chrono::steady_clock::now();
 
             if(!suceeded)
