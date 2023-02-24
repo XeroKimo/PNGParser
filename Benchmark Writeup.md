@@ -9,9 +9,12 @@ By no means would I think this is considered real world use of exceptions and in
 
 # Disclaimer
 
-By no means are my testing methodology is perfect, but hopefully they are better than the examples I've provided.
+By no means is my testing methodology perfect, but hopefully they are better than the examples I've provided.
 
-Code can be found here  [XeroKimo/PNGParser at benchmark\_exception\_branch (github.com)](https://github.com/XeroKimo/PNGParser/tree/benchmark_exception_branch)
+Code can be found here  
+- [Exception Branch](https://github.com/XeroKimo/PNGParser/tree/benchmark_exception_branch)
+- [Expected w/ std::shared_ptr](https://github.com/XeroKimo/PNGParser/tree/benchmark_expected_ptr_branch)
+- [Expected w/ enum](https://github.com/XeroKimo/PNGParser/tree/benchmark_expected_branch)
 
 # Methodolgy
 
@@ -35,10 +38,13 @@ For each branch, I benchmarked the following 100 times on the same image, and ma
 * Abort on first unimportant chunk failure
 * Abort on header chunk failure (No Seek)
 * Abort on first unimportant chunk failure (No Seek)
+* Deepest Callstack Test
 
 Currently in my library, if I fail to parse a chunk, I throw an exception. When I fail to parse a chunk, the stream seeks to the start of the next chunk so we can try to parse the next chunk. Which explains what the various tests are, why I chose them where just whatever I felt like testing.
 
-The first 2 tests will properly decode a PNG so it'll actually go through de-filtering, de-interlacing, and such as they'll have all the data they need in order to do so, while the rest will basically fail before the decoding actually starts.
+NEW: Deepest Callstack Test how expensive would is it to propagate an error that has the deepest callstack. For my test case, the deepest stack is 10.
+
+The first 2 tests will properly decode a PNG so it'll actually go through de-filtering, de-interlacing, and such as they'll have all the data they need in order to do so. They are the success cases. The rest will fail before the decoding actually starts.
 
 # Results
 
@@ -56,10 +62,11 @@ Exceptions:
 |Abort on Unimportant Chunk Failure|284us|514us|324us|
 |Abort on Header Chunk Failure (No Seek)|274us|507us|315us|
 |Abort on Unimportant Chunk Failed (No Seek)|278us|553us|314us|
+|Deepest Callstack Test|271us|1ms|316us|
 
 &#x200B;
 
-Expected w/ std::shared\_ptr<std::exception>>
+Expected w/ std::shared\_ptr\<std::exception>
 
 &#x200B;
 
@@ -73,6 +80,7 @@ Expected w/ std::shared\_ptr<std::exception>>
 |Abort on Unimportant Chunk Failure|7us|49us|9us|
 |Abort on Header Chunk Failure (No Seek)|6us|34us|7us|
 |Abort on Unimportant Chunk Failed (No Seek)|6us|42us|8us|
+|Deepest Callstack Test|7us|64us|8us|
 
 &#x200B;
 
@@ -90,6 +98,7 @@ Expected w/ enum
 |Abort on Unimportant Chunk Failure|7us|35us|8us|
 |Abort on Header Chunk Failure (No Seek)|5us|29us|6us|
 |Abort on Unimportant Chunk Failed (No Seek)|6us|30us|7us|
+|Deepest Callstack Test|6us|33us|7us|
 
 # Observations
 
