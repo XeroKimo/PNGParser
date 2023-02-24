@@ -42,7 +42,7 @@ For each branch, I benchmarked the following 100 times on the same image, and ma
 
 Currently in my library, if I fail to parse a chunk, I throw an exception. When I fail to parse a chunk, the stream seeks to the start of the next chunk so we can try to parse the next chunk. Which explains what the various tests are, why I chose them where just whatever I felt like testing.
 
-NEW: Deepest Callstack Test how expensive would is it to propagate an error that has the deepest callstack. For my test case, the deepest stack is 10.
+NEW: Deepest Callstack Test how expensive would is it to propagate an error that has the deepest callstack. For my test case, the deepest stack is 10. Though with optimizations, you could probably expect some inling, so the actual deepest callstack could probably be 7-9
 
 The first 2 tests will properly decode a PNG so it'll actually go through de-filtering, de-interlacing, and such as they'll have all the data they need in order to do so. They are the success cases. The rest will fail before the decoding actually starts.
 
