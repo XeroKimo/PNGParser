@@ -174,12 +174,13 @@ static constexpr auto textDataStrings = std::to_array<std::string_view>({
 std::string ReadCString(ChunkDataInputStream& stream, std::size_t maxSize = std::numeric_limits<std::size_t>::max())
 {
     std::string string;
+    string.reserve(maxSize);
     char letter = stream.Read<char>();
     for(size_t i = 0; i < maxSize && letter != 0; i++, letter = stream.Read<char>())
     {
         string.push_back(letter);
     }
-
+    string.shrink_to_fit();
     if(letter != 0)
         throw std::runtime_error("Null terminator not found when parsing suggested palette name");
 
@@ -190,7 +191,7 @@ std::string ReadCString(ChunkDataInputStream& stream, std::size_t maxSize = std:
 std::string ReadString(ChunkDataInputStream& stream)
 {
     std::string string;
-
+    string.reserve(stream.UnreadSize());
     for(char letter = stream.Read<char>(); stream.HasUnreadData(); letter = stream.Read<char>())
     {
         string.push_back(letter);
@@ -908,7 +909,7 @@ struct ChunkTraits<"zTXt">
         Data data;
 
         //TODO: Add keyword error handling here? or when we want to actually construct the text data
-        data.keyword = ReadCString(stream, 80);
+       /* stream >> */data.keyword /*>> data.compressionMethod >> data.text; */= ReadCString(stream, 80);
         data.compressionMethod = stream.Read<std::uint8_t>();
         data.text = ReadString(stream);
 

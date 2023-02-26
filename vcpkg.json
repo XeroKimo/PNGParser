@@ -3,16 +3,13 @@
 	"version": "0.1",
 	"dependencies": [
 		{
-			"name": "sdl2",
-			"platform": "windows"
+			"name": "sdl2"
 		},
 		{
-			"name": "sdl2-image",
-			"platform": "windows"
+			"name": "sdl2-image"
 		},
 		{
-			"name": "zlib",
-			"platform": "windows"
+			"name": "zlib"
 		}
 	]
 }

@@ -6,44 +6,51 @@ module;
 
 export module PNGParser:ChunkParser;
 import :PlatformDetection;
+import :ScopeGuard;
 
 template<size_t Count>
 Bytes<Count> ReadBytes(std::istream& stream)
 {
     using Byte = Bytes<Count>::value_type;
     Bytes<Count> bytes;
-    for(Byte& b : bytes)
-        b = static_cast<Byte>(stream.get());
+    stream.read(reinterpret_cast<char*>(&bytes), Count);
     return bytes;
 }
 
 template<size_t Count>
 Bytes<Count> ReadNativeBytes(std::istream& stream)
 {
-    using Byte = Bytes<Count>::value_type;
-    Bytes<Count> bytes;
-
     if constexpr(SwapByteOrder)
     {
-        auto begin = bytes.rbegin();
-        auto end = bytes.rend();
-        for(; begin != end; ++begin)
+        using Byte = Bytes<Count>::value_type;
+        Bytes<Count> bytes;
+
+        stream.read(reinterpret_cast<char*>(&bytes), Count);
+        auto begin = bytes.begin();
+        auto end = bytes.end() - 1;
+        for(; begin < end; ++begin, --end)
         {
-            *begin = static_cast<Byte>(stream.get());
+            std::iter_swap(begin, end);
         }
+
+        return bytes;
     }
     else
     {
-        for(Byte& b : bytes)
-            b = static_cast<Byte>(stream.get());
+        return ReadBytes<Count>(stream);
     }
-
-    return bytes;
 };
 
 template<class Ty>
-    requires std::integral<Ty> || std::floating_point<Ty>
-Ty ParseBytes(std::istream& stream)
+    requires std::integral<Ty> || std::floating_point<Ty> || std::is_enum_v<Ty>
+Ty ReadBytes(std::istream & stream)
+{
+    return std::bit_cast<Ty>(ReadBytes<sizeof(Ty)>(stream));
+};
+
+template<class Ty>
+    requires std::integral<Ty> || std::floating_point<Ty> || std::is_enum_v<Ty>
+Ty ReadNativeBytes(std::istream& stream)
 {
     return std::bit_cast<Ty>(ReadNativeBytes<sizeof(Ty)>(stream));
 };
@@ -87,13 +94,13 @@ public:
     template<size_t Count>
     Bytes<Count> ReadNative()
     {
-        std::uint32_t bytesRead = m_bytesRead + Count;
-
-        if(bytesRead > m_chunkSize)
+        if(m_bytesRead + Count > m_chunkSize)
             throw std::out_of_range("Reading memory outside of range");
 
-        m_bytesRead = bytesRead;
-
+        ScopeGuard updateByteCount = [&]
+        {
+            m_bytesRead += static_cast<std::uint32_t>(m_stream->gcount());
+        };
         return ReadNativeBytes<Count>(*m_stream);
     }
 
@@ -107,13 +114,13 @@ public:
     template<size_t Count>
     Bytes<Count> Read()
     {
-        std::uint32_t bytesRead = m_bytesRead + Count;
-
-        if(bytesRead > m_chunkSize)
+        if(m_bytesRead + Count > m_chunkSize)
             throw std::out_of_range("Reading memory outside of range");
 
-        m_bytesRead = bytesRead;
-
+        ScopeGuard updateByteCount = [&]
+        {
+            m_bytesRead += static_cast<std::uint32_t>(m_stream->gcount());
+        };
         return ReadBytes<Count>(*m_stream);
     }
 
@@ -123,7 +130,7 @@ public:
     {
         count = std::min(count, UnreadSize());
         m_stream->seekg(count, std::ios_base::cur);
-        m_bytesRead = count;
+        m_bytesRead += count;
     }
 
     std::uint32_t ChunkSize() const noexcept { return m_chunkSize; }

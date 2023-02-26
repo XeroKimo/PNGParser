@@ -42,5 +42,11 @@
     <ClCompile Include="Adam7.ixx">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ColorTypeDescription.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ScopeGuard.ixx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

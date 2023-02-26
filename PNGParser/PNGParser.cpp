@@ -17,6 +17,7 @@ module;
 #include <variant>
 
 module PNGParser;
+import :ScopeGuard;
 
 class UnknownChunkError : public std::runtime_error
 {
@@ -43,37 +44,6 @@ public:
     {
 
     }
-
-
-};
-
-template<class Lambda>
-class ScopeGuard
-{
-private:
-    Lambda m_l;
-    bool m_engaged = true;
-
-public:
-    ScopeGuard(Lambda l) :
-        m_l(l)
-    {
-
-    }
-    ScopeGuard(const ScopeGuard&) = default;
-    ScopeGuard(ScopeGuard&&) noexcept = default;
-    ~ScopeGuard()
-    {
-        if(m_engaged)
-            m_l();
-    };
-
-
-    ScopeGuard& operator=(const ScopeGuard&) = default;
-    ScopeGuard& operator=(ScopeGuard&&) noexcept = default;
-
-public:
-    void Disengage() { m_engaged = false; }
 };
 
 void VerifySignature(std::istream& stream)
@@ -97,12 +67,12 @@ private:
 public:
     ChunkDecoder(std::istream& stream)
     {
-        while(!stream.eof())
+        while(true)
         {
             try
             {
-                //(this->*m_parseChunkState)(stream);
-                ParseChunk(stream, [](ChunkType e) {});
+                if(ParseChunk(stream, [](ChunkType e) {}) == "IEND")
+                    break;
             }
             catch(const UnknownChunkError& e)
             {
@@ -122,26 +92,16 @@ private:
     template<std::invocable<ChunkType> OrderingConstraintCheck>
     ChunkType ParseChunk(std::istream& stream, OrderingConstraintCheck fn)
     {
-        std::uint32_t chunkSize = ParseBytes<std::uint32_t>(stream);
+        std::uint32_t chunkSize = ReadNativeBytes<std::uint32_t>(stream);
         ChunkType type{ ReadBytes<4>(stream) };
 
-        ScopeGuard endChunkCleanUp = [&]
-        {
-            if(type == "IEND")
-            {
-                while(!stream.eof())
-                {
-                    stream.get();
-                }
-            }
-        };
         ScopeGuard crcCleanUp = [&]
         {
-            ParseBytes<std::uint32_t>(stream);
+            ReadNativeBytes<std::uint32_t>(stream);
         };
 
         VisitParseChunkData(stream, chunkSize, type, fn);
-        std::uint32_t crc = ParseBytes<std::uint32_t>(stream);
+        std::uint32_t crc = ReadNativeBytes<std::uint32_t>(stream);
 
         crcCleanUp.Disengage();
 

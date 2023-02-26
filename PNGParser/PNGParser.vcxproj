@@ -155,6 +155,7 @@
     <ClCompile Include="PNGFilter0.ixx" />
     <ClCompile Include="PNGParser.cpp" />
     <ClCompile Include="PNGParser.ixx" />
+    <ClCompile Include="ScopeGuard.ixx" />
     <ClCompile Include="Source.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

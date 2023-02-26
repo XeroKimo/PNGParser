@@ -20,6 +20,7 @@ void TestImageParser()
         try
         {
              std::fstream image{ dir_entry.path(), std::ios::binary | std::ios::in };
+             image.exceptions(std::ios_base::badbit | std::ios_base::failbit);
              ParsePNG(image);
              std::cout << "\n";
         }
@@ -32,8 +33,8 @@ void TestImageParser()
 
 void OutputTest(std::string file)
 {
-
-    std::fstream image{ file, std::ios::binary | std::ios::in };
+    std::fstream image { file, std::ios::binary | std::ios::in };
+    image.exceptions(std::ios_base::badbit | std::ios_base::failbit /*| std::ios_base::eofbit*/);
 
     Image2 im;
     if(image.is_open())
